@@ -27,6 +27,8 @@
 
 #include "AU.H"
 
+#include "TSF.H"
+
 #define BASE_DEFAULT 0x220
 #define IRQ_DEFAULT 7
 #define DMA_DEFAULT 1
@@ -61,41 +63,41 @@ extern uint32_t STACKTOP;
 
 /* don't assume hdpmi is loaded - get PSP selector from OW's _psp global var! */
 #pragma aux _get_linear_psp = \
-	"mov ebx, [_psp]" \
-	"mov ax, 6" \
-	"int 31h" \
-	"push cx" \
-	"push dx" \
-	"pop eax" \
-	parm [] \
-	modify exact [ebx cx dx eax]
+        "mov ebx, [_psp]" \
+        "mov ax, 6" \
+        "int 31h" \
+        "push cx" \
+        "push dx" \
+        "pop eax" \
+        parm [] \
+        modify exact [ebx cx dx eax]
 
 #pragma aux _get_linear_rmstack = \
-	"mov bx, 40h" \
-	"mov ax, 100h" \
-	"int 31h" \
-	"mov [ecx], dx" \
-	"movzx eax, ax" \
-	"shl eax, 4" \
-	parm [ecx] \
-	modify exact [bx dx eax]
+        "mov bx, 40h" \
+        "mov ax, 100h" \
+        "int 31h" \
+        "mov [ecx], dx" \
+        "movzx eax, ax" \
+        "shl eax, 4" \
+        parm [ecx] \
+        modify exact [bx dx eax]
 
 #pragma aux _get_stack_top = \
-	"mov eax, [STACKTOP]" \
-	parm [] \
-	modify exact[eax];
+        "mov eax, [STACKTOP]" \
+        parm [] \
+        modify exact[eax];
 
 #endif
 
 uint8_t bOMode = 1; /* 1=output DOS, 2=direct, 4=debugger */
 
 struct MAIN_s {
-	int hAU;    /* handle audioout_info; we don't want to know mpxplay internals */
-	int freq;   /* default value for AU_setrate() */
-	bool bISR;  /* 1=ISR installed */
-	bool bQemm; /* 1=QPI API found */
-	bool bHdpmi;/* 1=HDPMI found */
-	int bHelp;  /* 1=show help */
+        int hAU;    /* handle audioout_info; we don't want to know mpxplay internals */
+        int freq;   /* default value for AU_setrate() */
+        bool bISR;  /* 1=ISR installed */
+        bool bQemm; /* 1=QPI API found */
+        bool bHdpmi;/* 1=HDPMI found */
+        int bHelp;  /* 1=show help */
 };
 
 static struct MAIN_s gm = { 0, 22050, false, false, false, false };
@@ -159,6 +161,8 @@ static const char* MAIN_SBTypeString[] =
 #endif
 };
 
+extern tsf* tsfrenderer;
+
 int _is_installed( void );
 
 static int IsInstalled( void )
@@ -177,31 +181,31 @@ void fatal_error( int nError )
 		"int $0x10"
 	   );
 #else
-	_asm mov ax,3
+        _asm mov ax,3
     _asm int 10h
 #endif
-	printf("VSBHDA: fatal error %u\n", nError );
-	for (;;);
+        printf("VSBHDA: fatal error %u\n", nError );
+        for (;;);
 }
 #endif
 
 static void ReleaseRes( void )
 //////////////////////////////
 {
-	_UninstallInt31(); /* must be called before SNDISR_Exit() */
-	if ( gm.bISR ) {
-		VIRQ_Exit( gvars.irq );
-		SNDISR_Exit();
-	}
+        _UninstallInt31(); /* must be called before SNDISR_Exit() */
+        if ( gm.bISR ) {
+                VIRQ_Exit( gvars.irq );
+                SNDISR_Exit();
+        }
 
-	if( gvars.rm )
-		PTRAP_Uninstall_RM_PortTraps();
+        if( gvars.rm )
+                PTRAP_Uninstall_RM_PortTraps();
 
-	if( gvars.pm ) {
-		PTRAP_Uninstall_PM_PortTraps();
-	}
+        if( gvars.pm ) {
+                PTRAP_Uninstall_PM_PortTraps();
+        }
 
-	return;
+        return;
 }
 
 /* uninstall.
@@ -213,22 +217,22 @@ void _uninstall_tsr( uint32_t linpsp );
 void MAIN_Uninstall( void )
 ///////////////////////////
 {
-	ReleaseRes();
-	AU_close( gm.hAU );
-	_uninstall_tsr( _my_psp() ); /* should not return */
-	return;
+        ReleaseRes();
+        AU_close( gm.hAU );
+        _uninstall_tsr( _my_psp() ); /* should not return */
+        return;
 }
 
 #if REINITOPL
 void MAIN_ReinitOPL( void )
 ///////////////////////////
 {
-	if( gvars.opl3 ) {
-		uint8_t buffer[108];
-		fpu_save(buffer);
-		VOPL3_Reinit( AU_getfreq( gm.hAU ) );
-		fpu_restore(buffer);
-	}
+        if( gvars.opl3 ) {
+                uint8_t buffer[108];
+                fpu_save(buffer);
+                VOPL3_Reinit( AU_getfreq( gm.hAU ) );
+                fpu_restore(buffer);
+        }
 }
 #endif
 
@@ -447,9 +451,9 @@ int main(int argc, char* argv[])
     gvars.opl3 = 0;
 #endif
 #if SB16
-	PTRAP_Prepare( gvars.opl3, gvars.base, gvars.dma, gvars.hdma, AU_getirq( gm.hAU ) );
+        PTRAP_Prepare( gvars.opl3, gvars.base, gvars.dma, gvars.hdma, AU_getirq( gm.hAU ) );
 #else
-	PTRAP_Prepare( gvars.opl3, gvars.base, gvars.dma, 0, AU_getirq( gm.hAU ) );
+        PTRAP_Prepare( gvars.opl3, gvars.base, gvars.dma, 0, AU_getirq( gm.hAU ) );
 #endif
 #if SB16
     VSB_Init( gvars.irq, gvars.dma, gvars.hdma, gvars.type );
@@ -511,6 +515,20 @@ int main(int argc, char* argv[])
         VIRQ_Init( gvars.irq );
         _InstallInt31();
     }
+
+#if VMPU
+    if (gvars.mpu) {
+    tsfrenderer = tsf_load_filename("soundfont.sf2");
+    if (tsfrenderer) {
+        int channel = 0;
+        printf("TSF loaded\n");
+        tsf_set_max_voices(tsfrenderer, 64);
+	tsf_set_output(tsfrenderer, TSF_STEREO_INTERLEAVED, gm.freq, 0);
+        for (channel = 0; channel < 16; channel++)
+                tsf_channel_midi_control(tsfrenderer, channel, 121, 0);
+    }
+    }
+#endif
 
     PIC_UnmaskIRQ( AU_getirq( gm.hAU ) );
 

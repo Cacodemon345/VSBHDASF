@@ -91,11 +91,19 @@ int VOPL3_GetMode()
 int VOPL3_GenSamples(int16_t* pcm16, int count)
 ///////////////////////////////////////////////
 {
-    char buffer[108];
+	char buffer[108];
 	int rc;
+#ifdef DJGPP
+	asm volatile("fnsave %0" : "=m"(buffer));
+#else
 	fpu_save(buffer);
+#endif
 	rc = opl3.Chip->Generate(pcm16, count);
+#ifdef DJGPP
+	asm volatile("frstor %0" :: "m"(buffer));
+#else
 	fpu_restore(buffer);
+#endif
 	return rc;
 }
 

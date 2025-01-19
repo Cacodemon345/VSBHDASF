@@ -58,6 +58,10 @@ endif
 ;	comm c __djgpp_stack_top:dword
 externdef c __djgpp_stack_top:dword
 
+; DJGPP generates utterly malformed code for F(N)SAVE/FRSTOR instructions
+; making this mandatory
+; fpustack DWORD 27 dup (?)
+
 	.code
 
 SwitchStackIOIn proc public
@@ -76,6 +80,8 @@ SwitchStackIO proc
 	pushad
 	push ds
 	push es
+;        sub esp, 108
+;        fnsave [esp]
 	mov ebp, esp
 ifdef NOTFLAT
 	mov cx, [ebp].IOEXCFR._errcode
@@ -113,7 +119,7 @@ ifdef NOTFLAT
 endif
 
 	assume ds:ASSUMEDS
-
+;	fnsave BYTE PTR [fpustack]
 	mov ebx, ss
 	sub [__djgpp_stack_top], STACKCORR
 	mov ss, PRFXDS[dwDS]
@@ -155,6 +161,7 @@ if TRIGGERIRQ
 	sub [__djgpp_stack_top], STACKCORR
 	mov ss, PRFXDS[dwDS]
 	mov esp, [__djgpp_stack_top]
+
 	push ebx
 	push ebp
 	call VIRQ_Invoke
@@ -163,6 +170,8 @@ if TRIGGERIRQ
 	add [__djgpp_stack_top], STACKCORR
 @@:
 endif
+;	frstor BYTE PTR [esp]
+;	add esp, 108
 	pop es
 	pop ds
 	popad
@@ -200,6 +209,7 @@ endif
 
 	assume ds:ASSUMEDS
 
+	;fnsave BYTE PTR [fpustack]
 	sub [__djgpp_stack_top], STACKCORR
 	mov ebx, ss
 	mov ebp, esp
@@ -245,6 +255,7 @@ ife COPYRMCS
 endif
 	mov ss, ebx
 	mov esp, ebp
+	;frstor BYTE PTR [fpustack]
 	insIRET
 	align 4
 

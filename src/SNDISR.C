@@ -22,6 +22,8 @@
 
 #include "AU.H"
 
+#include "TSF.h"
+
 #define SUP16BITUNSIGNED 1 /* support 16-bit unsigned format */
 
 #define MIXERROUTINE 0
@@ -35,22 +37,24 @@ extern void fatal_error( int );
 extern struct globalvars gvars;
 
 struct SNDISR_s {
-	int16_t *pPCM;
-	uint32_t DMA_linearBase; /* linear start address of current DMA buffer */
-	uint32_t DMA_Base;       /* (physical) base address of DMA buffer at last remapping */
-	uint32_t DMA_Size;       /* size of DMA buffer at last remapping */
-	uint32_t Block_Handle;   /* handle of remapping block */
-	uint32_t Block_Addr;     /* linear base of remapping block ( page aligned ) */
-	int hAU;
+        int16_t *pPCM;
+        uint32_t DMA_linearBase; /* linear start address of current DMA buffer */
+        uint32_t DMA_Base;       /* (physical) base address of DMA buffer at last remapping */
+        uint32_t DMA_Size;       /* size of DMA buffer at last remapping */
+        uint32_t Block_Handle;   /* handle of remapping block */
+        uint32_t Block_Addr;     /* linear base of remapping block ( page aligned ) */
+        int hAU;
 #if SETABSVOL
-	uint16_t SB_VOL;
+        uint16_t SB_VOL;
 #endif
 #ifdef _LOGBUFFMAX /* log the usage of the PCM buffer? */
-	uint32_t dwMaxBytes;
+        uint32_t dwMaxBytes;
 #endif
 };
 
 static struct SNDISR_s isr = {NULL,-1,0,0};
+
+tsf* tsfrenderer = NULL;
 
 #ifndef DJGPP
 /* here malloc/free is superfast since it's a very simple "stack" */
@@ -64,13 +68,13 @@ static struct SNDISR_s isr = {NULL,-1,0,0};
 static void delay_10us(unsigned int ticks)
 //////////////////////////////////////////
 {
-	static uint64_t oldtsc = 0;
-	uint64_t newtsc;
+        static uint64_t oldtsc = 0;
+        uint64_t newtsc;
 
-	do {
-		newtsc = rdtsc();
-	} while ( (newtsc - oldtsc) < ( ticks << 18 ) );
-	oldtsc = newtsc;
+        do {
+                newtsc = rdtsc();
+        } while ( (newtsc - oldtsc) < ( ticks << 18 ) );
+        oldtsc = newtsc;
 }
 #endif
 
@@ -139,63 +143,63 @@ static int DecodeADPCM(uint8_t *adpcm, int bytes)
 static unsigned int cv_rate( PCM_CV_TYPE_S *pcmsrc, unsigned int samplenum, unsigned int channels, unsigned int srcrate, unsigned int dstrate)
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 {
-	/* todo: what algorithm for instep is best? */
-	//const unsigned int instep = ((srcrate / dstrate) << 12) | (((4096 * (srcrate % dstrate) - 1) / (dstrate - 1)) & 0xFFF);
-	const unsigned int instep = ((srcrate / dstrate) << 12) | (((4096 * (srcrate % dstrate) + dstrate - 1 ) / dstrate) & 0xFFF);
+        /* todo: what algorithm for instep is best? */
+        //const unsigned int instep = ((srcrate / dstrate) << 12) | (((4096 * (srcrate % dstrate) - 1) / (dstrate - 1)) & 0xFFF);
+        const unsigned int instep = ((srcrate / dstrate) << 12) | (((4096 * (srcrate % dstrate) + dstrate - 1 ) / dstrate) & 0xFFF);
 
-	const unsigned int inend = (samplenum / channels) << 12;
-	PCM_CV_TYPE_S *pcmdst;
-	unsigned long ipi;
-	unsigned int inpos = 0;//(srcrate < dstrate) ? instep/2 : 0;
-	int total;
+        const unsigned int inend = (samplenum / channels) << 12;
+        PCM_CV_TYPE_S *pcmdst;
+        unsigned long ipi;
+        unsigned int inpos = 0;//(srcrate < dstrate) ? instep/2 : 0;
+        int total;
 #if MALLOCSTATIC
-	static int maxsample = 0;
-	static PCM_CV_TYPE_S* buff = NULL;
+        static int maxsample = 0;
+        static PCM_CV_TYPE_S* buff = NULL;
 #else
-	PCM_CV_TYPE_S* buff;
+        PCM_CV_TYPE_S* buff;
 #endif
 
-	if(!samplenum)
-		return 0;
+        if(!samplenum)
+                return 0;
 
 #if MALLOCSTATIC
-	if ( samplenum > maxsample ) {
-		if ( buff )
-			free( buff );
-		buff = (PCM_CV_TYPE_S*)malloc(samplenum * sizeof(PCM_CV_TYPE_S));
-		maxsample = samplenum;
-	}
+        if ( samplenum > maxsample ) {
+                if ( buff )
+                        free( buff );
+                buff = (PCM_CV_TYPE_S*)malloc(samplenum * sizeof(PCM_CV_TYPE_S));
+                maxsample = samplenum;
+        }
 #else
-	buff = (PCM_CV_TYPE_S*)malloc(samplenum * sizeof(PCM_CV_TYPE_S));
+        buff = (PCM_CV_TYPE_S*)malloc(samplenum * sizeof(PCM_CV_TYPE_S));
 #endif
-	memcpy( buff, pcmsrc, samplenum * sizeof(PCM_CV_TYPE_S) );
+        memcpy( buff, pcmsrc, samplenum * sizeof(PCM_CV_TYPE_S) );
 
-	pcmdst = pcmsrc;
-	total = samplenum / channels;
+        pcmdst = pcmsrc;
+        total = samplenum / channels;
 
-	do{
-		int m1,m2;
-		unsigned int ipi,ch;
-		PCM_CV_TYPE_S *intmp1,*intmp2;
-		ipi = inpos >> 12;
-		m2 = inpos & 0xFFF;
-		m1 = 4096 - m2;
-		ch = channels;
-		ipi *= ch;
-		intmp1 = buff + ipi;
-		intmp2 = ipi < total - ch ? intmp1 + ch : intmp1;
-		do{
-			*pcmdst++= ((*intmp1++) * m1 + (*intmp2++) * m2) / 4096;// >> 12; //don't use shift, signed right shift impl defined, maybe logical shift
-		}while (--ch);
-		inpos += instep;
-	}while( inpos < inend );
+        do{
+                int m1,m2;
+                unsigned int ipi,ch;
+                PCM_CV_TYPE_S *intmp1,*intmp2;
+                ipi = inpos >> 12;
+                m2 = inpos & 0xFFF;
+                m1 = 4096 - m2;
+                ch = channels;
+                ipi *= ch;
+                intmp1 = buff + ipi;
+                intmp2 = ipi < total - ch ? intmp1 + ch : intmp1;
+                do{
+                        *pcmdst++= ((*intmp1++) * m1 + (*intmp2++) * m2) / 4096;// >> 12; //don't use shift, signed right shift impl defined, maybe logical shift
+                }while (--ch);
+                inpos += instep;
+        }while( inpos < inend );
 
-	//dbgprintf(("cv_rate(src/dst rates=%u/%u chn=%u smpl=%u step=%x end=%x)=%u\n", srcrate, dstrate, channels, samplenum, instep, inend, pcmdst - pcmsrc ));
+        //dbgprintf(("cv_rate(src/dst rates=%u/%u chn=%u smpl=%u step=%x end=%x)=%u\n", srcrate, dstrate, channels, samplenum, instep, inend, pcmdst - pcmsrc ));
 
 #if !MALLOCSTATIC
-	free(buff);
+        free(buff);
 #endif
-	return pcmdst - pcmsrc;
+        return pcmdst - pcmsrc;
 }
 
 /* convert 8 to 16 bits. It's assumed that 8 bit is unsigned, 16-bit is signed */
@@ -203,12 +207,12 @@ static unsigned int cv_rate( PCM_CV_TYPE_S *pcmsrc, unsigned int samplenum, unsi
 static void cv_bits_8_to_16( PCM_CV_TYPE_S *pcm, unsigned int samplenum )
 /////////////////////////////////////////////////////////////////////////
 {
-	PCM_CV_TYPE_UC *src = (PCM_CV_TYPE_UC *)pcm + samplenum - 1;
-	PCM_CV_TYPE_S *dst = pcm + samplenum - 1;
+        PCM_CV_TYPE_UC *src = (PCM_CV_TYPE_UC *)pcm + samplenum - 1;
+        PCM_CV_TYPE_S *dst = pcm + samplenum - 1;
 
-	for ( ; samplenum; samplenum-- ) {
-		*dst-- = (PCM_CV_TYPE_S)((*src-- ^ 0x80) << 8);
-	}
+        for ( ; samplenum; samplenum-- ) {
+                *dst-- = (PCM_CV_TYPE_S)((*src-- ^ 0x80) << 8);
+        }
 }
 
 /* convert mono to stereo. */
@@ -225,6 +229,23 @@ static void cv_channels_1_to_2( PCM_CV_TYPE_S *pcm_sample, unsigned int samplenu
     return;
 }
 
+static void render_tsf_audio(int samples)
+{
+    char buffer[108];
+#ifdef DJGPP
+    asm volatile("fnsave %0" : "=m"(buffer));
+#endif
+    if (tsfrenderer)
+    {
+	tsf_set_output(tsfrenderer, TSF_STEREO_INTERLEAVED, AU_getfreq( isr.hAU ), 0);
+        tsf_render_short(tsfrenderer, isr.pPCM, samples, 1);
+    }
+#ifdef DJGPP
+    asm volatile("frstor %0" :: "m"(buffer));
+#endif    
+}
+
+
 static int SNDISR_Interrupt( void )
 ///////////////////////////////////
 {
@@ -238,8 +259,9 @@ static int SNDISR_Interrupt( void )
     int i;
 
     /* check if the sound hw does request an interrupt. */
-    if( !AU_isirq( isr.hAU ) )
+    if( !AU_isirq( isr.hAU ) ) {
         return(0);
+    }
 
 #if SETIF
     _enable_ints();
@@ -480,6 +502,9 @@ static int SNDISR_Interrupt( void )
 #endif
     //aui.samplenum = samples * 2;
     //aui.pcm_sample = ISR_PCM;
+
+    render_tsf_audio(samples);
+
     AU_writedata( isr.hAU, samples * 2, isr.pPCM );
 
 #if DISPSTAT
@@ -492,7 +517,6 @@ static int SNDISR_Interrupt( void )
     if ( gvars.slowdown )
         delay_10us(gvars.slowdown);
 #endif
-
     return(1);
 }
 

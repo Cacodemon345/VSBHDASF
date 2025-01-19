@@ -147,6 +147,7 @@ static int portranges[8+1];
  * called by SwitchStackIOrmcb().
  */
 
+static unsigned char fpu_buffer[108];
 static void RM_TrapHandler( __dpmi_regs * regs)
 ///////////////////////////////////////////////
 {
@@ -159,7 +160,13 @@ static void RM_TrapHandler( __dpmi_regs * regs)
      */
     for ( i = 0; i < maxports; i++ ) {
         if( PortTable[i] == port ) {
+#ifdef DJGPP
+            asm volatile("fnsave %0" : "=m"(fpu_buffer));
+#endif
             regs->h.al = PortHandler[i]( port, regs->h.al, regs->h.cl & 4 );
+#ifdef DJGPP
+            asm volatile("frstor %0" :: "m"(fpu_buffer));
+#endif
             regs->x.flags &= ~CPU_CFLAG; /* clear carry flag, indicates that access was handled */
             return;
         }
@@ -195,9 +202,18 @@ uint32_t PTRAP_PM_TrapHandler( uint16_t port, uint32_t flags, uint32_t value )
 //////////////////////////////////////////////////////////////////////////////
 {
     int i;
+    unsigned char buffer[108];
+#ifdef DJGPP
+    asm volatile("fnsave %0" : "=m"(buffer));
+#endif
     for( i = 0; i < maxports; i++ )
-        if( PortTable[i] == port)
-            return PortHandler[i](port, value, flags & 1);
+        if( PortTable[i] == port) {
+            uint32_t ret = PortHandler[i](port, value, flags & 1);
+#ifdef DJGPP
+            asm volatile("frstor %0" :: "m"(buffer));
+#endif
+            return ret;
+        }
 
     /* ports that are trapped, but not handled; this may happen, since
      * hdpmi32i's support for port trapping is limited to 8 ranges.

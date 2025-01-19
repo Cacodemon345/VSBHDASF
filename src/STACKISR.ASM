@@ -49,15 +49,19 @@ if STACKCHECK
 dwStackBottom dd ?
 endif
 
+; fpustack DWORD 27 dup (?)
+
 	.code
 
 ;--- ISR for sound hw interrupt occuring in protected-mode
 
 SwitchStackISR proc
-
+;        fnsave BYTE PTR [fpustack]
 	pushad
 	push ds
 	push es
+;        sub esp, 108
+;        fnsave [esp]
 	mov ds, cs:[dwDS]
 	mov es, [dwDS]
 	cld
@@ -82,9 +86,12 @@ endif
 	lss esp, [esp]
 	add [__djgpp_stack_top], STACKCORR
 	and eax, eax	; interrupt handled?
+;        frstor BYTE PTR [esp]
+;        add esp, 108
 	pop es
 	pop ds
 	popad
+;        frstor BYTE PTR [fpustack]
 	jz prevhdlr
 	insIRET
 prevhdlr:
@@ -92,6 +99,7 @@ prevhdlr:
 if STACKCHECK
 failure:
 externdef c fatal_error:near
+;        frstor BYTE PTR [fpustack]
 	push 3
 	call fatal_error
 endif
