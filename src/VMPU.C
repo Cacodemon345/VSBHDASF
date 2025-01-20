@@ -59,8 +59,8 @@ void* tsfimpl_realloc(void *ptr, size_t size)
  * 0x331: read: status port
  *       write: command port
  * status port:
- * bit 6: 0=data ready to read
- * bit 7: 0=data ready to write (both command and data)
+ * bit 7: 0=data ready to read
+ * bit 6: 0=data ready to write (both command and data)
  * command port:
  *  ff: reset, then ACK (FE) from data port
  *  3f: set to UART mode
@@ -72,6 +72,7 @@ static const int midi_lengths[8] = { 3, 3, 3, 3, 2, 2, 3, 1 };
 static unsigned char midi_buffer[32];
 static unsigned char midi_ptr = 0;
 static unsigned char midi_status_byte = 0x80;
+static unsigned char midi_mpu_status = 0x80;
 
 extern tsf* tsfrenderer;
 
@@ -80,9 +81,13 @@ static void VMPU_Write(uint16_t port, uint8_t value)
 {
         dbgprintf(("VMPU_Write(%X)=%X\n", port, value ));
         if ( port == 0x331 ) {
+        	if ( value == 0x3f ) {
+                	midi_mpu_status &= ~0x80;
+                }
                 if ( value == 0xff ) {
                         bReset = true;
                         midi_ptr = 0;
+                        midi_mpu_status &= ~0x80;
                 }
         } else {
                 if (!bReset) {
@@ -154,15 +159,14 @@ static uint8_t VMPU_Read(uint16_t port)
 {
         dbgprintf(("VMPU_Read(%X)\n", port ));
         if ( port == 0x330 ) {
+                midi_mpu_status |= 0x80;
                 if ( bReset ) {
                         bReset = false;
                         return 0xfe;
                 }
-                return 0;
+                return 0xfe; // Always return Active Sensing.
         } else {
-                if ( bReset )
-                        return 0x00;
-                return 0x80;
+                return midi_mpu_status;
         }
 }
 
