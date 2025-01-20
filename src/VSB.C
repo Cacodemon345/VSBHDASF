@@ -366,6 +366,11 @@ int VSB_CalcSampleRate( uint8_t value )
 {
     int rc = 0;
     int i;
+// Disabled. Time constant limit here as implemented makes no sense.
+// The resulting sample rate should get clamped instead.
+// Revisit this later when figuring out how to deal with this.
+// For now disable this for games using Apogee Sound System.
+#if 0
 #if 0
     for( i = 0; i < 3; ++i ) {
         if(value >= VSB_TimeConstantMapMono[i][0] - 3 && value <= VSB_TimeConstantMapMono[i][0] + 3 ) {
@@ -382,9 +387,12 @@ int VSB_CalcSampleRate( uint8_t value )
     else
         limit = vsb.Bits == 2 ? 165 : (vsb.Bits == 3 ? 179 : (vsb.Bits == 4 ? 172 : (vsb.HighSpeed ? 234 : 212)));
 #endif
-    value = min(value, limit);
+#endif
+//    value = min(value, limit);
     //rc = 1000000 / ( 256 - value ) / VSB_GetChannels();
     rc = 256000000/( 65536 - (value << 8) ) / VSB_GetChannels();
+    if (rc > 45454) rc = 45454;
+    if (rc < 5000) rc = 5000;
     return rc;
 }
 
@@ -531,7 +539,9 @@ static void DSP_DoCommand( void )
         break;
     case SB_DSP_SET_SAMPLERATE: /* 41 - set output sample rate; SB16 only */
     case SB_DSP_SET_SAMPLERATE_I: SB16_ONLY(); /* 42 - set input sample rate; SB16 only */
-        vsb.SampleRate = ( vsb.dsp_in_data[0] << 8 ) | vsb.dsp_in_data[1]; /* hibyte first */
+        vsb.SampleRate = (( vsb.dsp_in_data[0] << 8 ) | vsb.dsp_in_data[1]) / VSB_GetChannels(); /* hibyte first */
+        if (vsb.SampleRate > 45454) vsb.SampleRate = 45454;
+        if (vsb.SampleRate < 5000) vsb.SampleRate = 5000;
         break;
     case SB_DSP_8BIT_DIRECT: /* 10 */
         vsb.DirectBuffer[vsb.DirectIdx++] = vsb.dsp_in_data[0];
