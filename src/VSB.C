@@ -183,6 +183,14 @@ static void VSB_MixerReset( void )
 	vsb.MixerRegs[SB_MIXERREG_VOICESTEREO] = 0xDD;  /* 04: */
 	vsb.MixerRegs[SB_MIXERREG_MASTERSTEREO] = 0xDD; /* 22: */
 	vsb.MixerRegs[SB_MIXERREG_MIDISTEREO] = 0xDD;   /* 26: */
+	if (vsb.DSPVER < 0x0400 && vsb.DSPVER >= 0x0300) {
+            int channels = VSB_GetChannels();
+            vsb.MixerRegs[SB_MIXERREG_MODEFILTER] = 0x11;
+            if (VSB_GetChannels() != channels) {
+                if (VSB_GetChannels() == 2) vsb.SampleRate /= 2;
+                if (VSB_GetChannels() == 1) vsb.SampleRate *= 2;
+            }
+        }
 #if SB16
 	if(vsb.DSPVER >= 0x0400) { //SB16
 		vsb.MixerRegs[SB16_MIXERREG_MASTERL] = 0xC0; /* 5 bits only (3-7) */
@@ -205,6 +213,7 @@ static void VSB_Mixer_Write( uint8_t value )
 ////////////////////////////////////////////
 {
     dbgprintf(("VSB_Mixer_Write[%u]: value=%x\n", vsb.MixerRegIndex, value));
+    int channels = VSB_GetChannels();
     vsb.MixerRegs[vsb.MixerRegIndex] = value;
     if ( vsb.MixerRegIndex == SB_MIXERREG_RESET )
         VSB_MixerReset();
@@ -265,6 +274,11 @@ static void VSB_Mixer_Write( uint8_t value )
         }
     }
 #endif
+
+    if (VSB_GetChannels() != channels) {
+        if (VSB_GetChannels() == 2) vsb.SampleRate /= 2;
+        if (VSB_GetChannels() == 1) vsb.SampleRate *= 2; 
+    }
 }
 
 /* read port 2x5 */
@@ -390,9 +404,9 @@ int VSB_CalcSampleRate( uint8_t value )
 #endif
 //    value = min(value, limit);
     //rc = 1000000 / ( 256 - value ) / VSB_GetChannels();
-    rc = 256000000/( 65536 - (value << 8) ) / VSB_GetChannels();
+    rc = (256000000/( 65536 - (value << 8) )) / VSB_GetChannels();
     if (rc > 45454) rc = 45454;
-    if (rc < 5000) rc = 5000;
+    if (rc < 4000) rc = 4000;
     return rc;
 }
 
@@ -430,6 +444,7 @@ static void DSP_Write( uint8_t value )
 static void DSP_DoCommand( void )
 /////////////////////////////////
 {
+//    int channels = VSB_GetChannels();
     switch ( vsb.dsp_cmd ) {
     case SB_DSP_SPEAKER_ON: /* D1 */
         vsb.bSpeaker = true;
@@ -539,7 +554,7 @@ static void DSP_DoCommand( void )
         break;
     case SB_DSP_SET_SAMPLERATE: /* 41 - set output sample rate; SB16 only */
     case SB_DSP_SET_SAMPLERATE_I: SB16_ONLY(); /* 42 - set input sample rate; SB16 only */
-        vsb.SampleRate = (( vsb.dsp_in_data[0] << 8 ) | vsb.dsp_in_data[1]) / VSB_GetChannels(); /* hibyte first */
+        vsb.SampleRate = (( vsb.dsp_in_data[0] << 8 ) | vsb.dsp_in_data[1]); /* hibyte first */
         if (vsb.SampleRate > 45454) vsb.SampleRate = 45454;
         if (vsb.SampleRate < 5000) vsb.SampleRate = 5000;
         break;
@@ -657,7 +672,10 @@ static void DSP_DoCommand( void )
     }
 
     vsb.dsp_cmd = SB_DSP_NOCMD;
-
+//    if (VSB_GetChannels() != channels) {
+//        if (VSB_GetChannels() == 2) vsb.SampleRate /= 2;
+//        if (VSB_GetChannels() == 1) vsb.SampleRate *= 2;
+//    }
 }
 
 /* read port 02xA */
