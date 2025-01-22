@@ -2,7 +2,12 @@
 ;--- switch stack, call port trap function, update client registers;
 ;--- both from protected-mode and real-mode.
 
+if PENTIUM4
+	.686
+endif
+ife PENTIUM4
 	.386
+endif
 	.MODEL ?MODEL, c
 	option casemap:none
 	option proc:private
@@ -126,6 +131,23 @@ endif
 	mov esp, [__djgpp_stack_top]
 	push ds
 	pop es
+if PENTIUM4
+        push eax
+        mov eax, cr4
+        test eax, 200h
+        jz enablefxsr
+        jmp checkexcpt
+enablefxsr:
+        or eax, 200h
+checkexcpt:
+        test eax, 400h
+        jnz moveback
+enableexcpt:
+        or eax, 400h
+moveback:
+        mov cr4, eax
+        pop eax
+endif
 	push eax
 	push ecx
 	push edx
@@ -216,6 +238,23 @@ endif
 	mov eax, ds
 	mov ss, eax
 	mov esp, [__djgpp_stack_top]
+if PENTIUM4
+        push eax
+        mov eax, cr4
+        test eax, 200h
+        jz enablefxsr
+        jmp checkexcpt
+enablefxsr:
+        or eax, 200h
+checkexcpt:
+        test eax, 400h
+        jnz moveback
+enableexcpt:
+        or eax, 400h
+moveback:
+        mov cr4, eax
+        pop eax
+endif
 	push ebx
 	push ebp
 if COPYRMCS

@@ -1,7 +1,12 @@
 
 ;--- handle sound hardware interrupt
 
+if PENTIUM4
+	.686
+endif
+ife PENTIUM4
 	.386
+endif
 	.MODEL ?MODEL, c
 	option casemap:none
 	option proc:private
@@ -80,6 +85,23 @@ ifdef _DEBUG
 endif
 	mov ss, [dwDS]
 	mov esp, [__djgpp_stack_top]
+if PENTIUM4
+        push eax
+        mov eax, cr4
+        test eax, 200h
+        jz enablefxsr
+        jmp checkexcpt
+enablefxsr:
+        or eax, 200h
+checkexcpt:
+        test eax, 400h
+        jnz moveback
+enableexcpt:
+        or eax, 400h
+moveback:
+        mov cr4, eax
+        pop eax
+endif
 	push edx
 	push ecx
 	call [dwISR]

@@ -1610,7 +1610,7 @@ TSFDEF int tsf_note_on(tsf* f, int preset_index, int key, float vel)
 		voice->playingKey = key;
 		voice->playIndex = voicePlayIndex;
 		voice->heldSustain = 0;
-		voice->noteGainDB = f->globalGainDB - (region->attenuation / 10.0f) - tsf_gainToDecibels(1.0f / vel);
+		voice->noteGainDB = f->globalGainDB - ((region->attenuation / 10.0f) * 0.4) - tsf_gainToDecibels(1.0f / vel);
 
 		if (f->channels)
 		{

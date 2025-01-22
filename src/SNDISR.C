@@ -229,23 +229,22 @@ static void cv_channels_1_to_2( PCM_CV_TYPE_S *pcm_sample, unsigned int samplenu
     return;
 }
 
+static unsigned char fpu_buffer[512] __attribute__((aligned(16)));
 static void render_tsf_audio(int samples)
 {
-    char buffer[108];
-#ifdef DJGPP
-    asm volatile("fnsave %0" : "=m"(buffer));
-#endif
     if (tsfrenderer)
     {
 	tsf_set_output(tsfrenderer, TSF_STEREO_INTERLEAVED, AU_getfreq( isr.hAU ), 0);
         tsf_render_short(tsfrenderer, isr.pPCM, samples, 1);
     }
-#ifdef DJGPP
-    asm volatile("frstor %0" :: "m"(buffer));
-#endif    
 }
 
-
+#if defined DJGPP && defined PENTIUM4
+__attribute__((target("fpmath=387")))
+__attribute__((target("no-sse2")))
+__attribute__((target("no-sse")))
+__attribute__((target("no-mmx")))
+#endif
 static int SNDISR_Interrupt( void )
 ///////////////////////////////////
 {
@@ -258,8 +257,10 @@ static int SNDISR_Interrupt( void )
     bool digital;
     int i;
 
+    fpu_save(fpu_buffer);
     /* check if the sound hw does request an interrupt. */
     if( !AU_isirq( isr.hAU ) ) {
+        fpu_restore(fpu_buffer);
         return(0);
     }
 
@@ -289,7 +290,8 @@ static int SNDISR_Interrupt( void )
         isr.SB_VOL =  mastervol * gvars.vol / 9;
         //uint8_t buffer[108];
         //fpu_save(buffer); /* needed if AU_setmixer_one() uses floats */
-        AU_setmixer_one( isr.hAU, AU_MIXCHAN_MASTER, MIXER_SETMODE_ABSOLUTE, mastervol * 100 / 256 ); /* convert to percentage 0-100 */
+        //AU_setmixer_one( isr.hAU, AU_MIXCHAN_MASTER, MIXER_SETMODE_ABSOLUTE, mastervol * 100 / 256 ); /* convert to percentage 0-100 */
+        AU_setmixer_outs( gm.hAU, MIXER_SETMODE_ABSOLUTE, mastervol * 100 / 256 );
         //fpu_restore(buffer);
         //dbgprintf(("isr: set master volume=%u\n", SNDISR_SB_VOL ));
     }
@@ -305,6 +307,7 @@ static int SNDISR_Interrupt( void )
     //dbgprintf(("isr: samples:%u ",samples));
 
     if(samples == 0) { /* no free space in DMA buffer? */
+        fpu_restore(fpu_buffer);
         PIC_SendEOI( AU_getirq( isr.hAU ) );
         return(1);
     }
@@ -512,6 +515,8 @@ static int SNDISR_Interrupt( void )
 #endif
 
     PIC_SendEOI( AU_getirq( isr.hAU ) );
+
+    fpu_restore(fpu_buffer);
 
 #if SLOWDOWN
     if ( gvars.slowdown )

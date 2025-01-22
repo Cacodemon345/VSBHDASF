@@ -22,8 +22,14 @@ static inline unsigned long long rdtsc(void)
 }
 //static inline void fpu_save(void * buffer) { }
 //static inline void fpu_restore(void * buffer) { }
+#ifdef PENTIUM4
+static unsigned int defmxcsr = 0x1f80;
+#define fpu_save(buffer) asm volatile("fxsave %0\n\tfninit\n\tldmxcsr %1" : "=m"((buffer)) : "m"(defmxcsr))
+#define fpu_restore(buffer) asm volatile("fxrstor %0" :: "m"(buffer))
+#else
 #define fpu_save(buffer) asm volatile("fnsave %0" : "=m"((buffer)))
 #define fpu_restore(buffer) asm volatile("frstor %0" :: "m"(buffer))
+#endif
 static inline void _disable_ints(void) { asm("mov $0x900, %%ax\n\t" "int $0x31" ::: "eax" ); }
 static inline void  _enable_ints(void) { asm("mov $0x901, %%ax\n\t" "int $0x31" ::: "eax" ); }
 

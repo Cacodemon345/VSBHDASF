@@ -147,7 +147,14 @@ static int portranges[8+1];
  * called by SwitchStackIOrmcb().
  */
 
-static unsigned char fpu_buffer[108];
+static unsigned char fpu_buffer[512] __attribute__((aligned(16)));
+
+#if defined DJGPP && defined PENTIUM4
+__attribute__((target("fpmath=387")))
+__attribute__((target("no-sse2")))
+__attribute__((target("no-sse")))
+__attribute__((target("no-mmx")))
+#endif
 static void RM_TrapHandler( __dpmi_regs * regs)
 ///////////////////////////////////////////////
 {
@@ -160,13 +167,9 @@ static void RM_TrapHandler( __dpmi_regs * regs)
      */
     for ( i = 0; i < maxports; i++ ) {
         if( PortTable[i] == port ) {
-#ifdef DJGPP
-            asm volatile("fnsave %0" : "=m"(fpu_buffer));
-#endif
+            fpu_save(fpu_buffer);
             regs->h.al = PortHandler[i]( port, regs->h.al, regs->h.cl & 4 );
-#ifdef DJGPP
-            asm volatile("frstor %0" :: "m"(fpu_buffer));
-#endif
+            fpu_restore(fpu_buffer);
             regs->x.flags &= ~CPU_CFLAG; /* clear carry flag, indicates that access was handled */
             return;
         }
@@ -198,20 +201,21 @@ static void RM_TrapHandler( __dpmi_regs * regs)
  * called by SwitchStackIO();
  */
 
+#if defined DJGPP && defined PENTIUM4
+__attribute__((target("fpmath=387")))
+__attribute__((target("no-sse2")))
+__attribute__((target("no-sse")))
+__attribute__((target("no-mmx")))
+#endif
 uint32_t PTRAP_PM_TrapHandler( uint16_t port, uint32_t flags, uint32_t value )
 //////////////////////////////////////////////////////////////////////////////
 {
     int i;
-    unsigned char buffer[108];
-#ifdef DJGPP
-    asm volatile("fnsave %0" : "=m"(buffer));
-#endif
     for( i = 0; i < maxports; i++ )
         if( PortTable[i] == port) {
+            fpu_save(fpu_buffer);
             uint32_t ret = PortHandler[i](port, value, flags & 1);
-#ifdef DJGPP
-            asm volatile("frstor %0" :: "m"(buffer));
-#endif
+            fpu_restore(fpu_buffer);
             return ret;
         }
 

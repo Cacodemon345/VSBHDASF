@@ -112,10 +112,8 @@ static void VMPU_Write(uint16_t port, uint8_t value)
 					return;
 
                                 if (midi_ptr >= midi_lengths[(midi_buffer[0] >> 4) - 0x8]) {
-                                        char buffer[108];
                                         midi_ptr = 0;
                                         if (tsfrenderer) {
-                                                fpu_save(buffer);
                                                 //asm("cli");
                                                 switch (midi_status_byte & 0xF0)
                                                 {
@@ -145,7 +143,6 @@ static void VMPU_Write(uint16_t port, uint8_t value)
                                                                 break;
                                                 }
                                                 //asm("sti");
-                                                fpu_restore(buffer);
                                         }
                                 }
                         }

@@ -223,15 +223,16 @@ void MAIN_Uninstall( void )
         return;
 }
 
+static uint8_t fpu_buffer[512] __attribute__((aligned(16)));
+
 #if REINITOPL
 void MAIN_ReinitOPL( void )
 ///////////////////////////
 {
         if( gvars.opl3 ) {
-                uint8_t buffer[108];
-                fpu_save(buffer);
+                fpu_save(fpu_buffer);
                 VOPL3_Reinit( AU_getfreq( gm.hAU ) );
-                fpu_restore(buffer);
+                fpu_restore(fpu_buffer);
         }
 }
 #endif
@@ -299,6 +300,12 @@ int main(int argc, char* argv[])
     dbgprintf((" P=%x", gvars.mpu ));
 #endif
     dbgprintf(("\n" ));
+
+#ifdef PENTIUM4
+    asm volatile("movl %%cr4, %%eax\n\t"
+		 "orl $0x600, %%eax\n\t"
+		 "mov %%eax, %%cr4\n\t" ::: "eax");
+#endif
 
     /* check cmdline arguments */
     for( i = 1; i < argc; ++i ) {
@@ -518,10 +525,11 @@ int main(int argc, char* argv[])
 
 #if VMPU
     if (gvars.mpu) {
-    tsfrenderer = tsf_load_filename("soundfont.sf2");
+    if (getenv("SOUNDFONT")) tsfrenderer = tsf_load_filename(getenv("SOUNDFONT"));
+    if (!tsfrenderer) tsfrenderer = tsf_load_filename("sfont.sf2");
     if (tsfrenderer) {
         int channel = 0;
-        printf("TSF loaded\n");
+        printf("TinySoundFont loaded\n");
         tsf_set_max_voices(tsfrenderer, 64);
 	tsf_set_output(tsfrenderer, TSF_STEREO_INTERLEAVED, gm.freq, 0);
         for (channel = 0; channel < 16; channel++)

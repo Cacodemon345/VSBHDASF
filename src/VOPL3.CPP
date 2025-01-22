@@ -91,7 +91,7 @@ int VOPL3_GetMode()
 int VOPL3_GenSamples(int16_t* pcm16, int count)
 ///////////////////////////////////////////////
 {
-	char buffer[108];
+	char buffer[512] __attribute((aligned(16)));
 	int rc;
 #ifdef DJGPP
 	asm volatile("fnsave %0" : "=m"(buffer));
