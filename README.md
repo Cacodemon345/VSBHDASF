@@ -1,30 +1,18 @@
-# VSBHDA
-Sound blaster emulation for HDA (and AC97/SBLive); a fork of crazii's SBEMU: https://github.com/crazii/SBEMU
+# VSBHDASF
+Sound blaster emulation for HDA (and AC97/SBLive); a fork of Japheth's VSBHDA.
 
-Works with unmodified HDPMI binaries, making it compatible with HX.
+This fork adds support for using soundfonts for MPU-401 emulation using TinySoundFont, and properly fixes it to make it work with games like Duke Nukem 3D.
 
-Supported Sound cards:
- * HDA ( Intel High Definition Audio )
- * Intel ICH / nForce
- * VIA VT82C686, VT8233/35/37
- * SB Live/SB Audigy
+Requirements remain the exact same as upstream VSBHDA, except it now requires potentially 128MB of XMS memory for soundfont functionality.
 
-Emulated modes/cards:
-8-bit, 16-bit, mono, stereo, high-speed;
-Sound blaster 1.0, 2.0, Pro, Pro2, 16.
+Requirements, supported sound cards and emulated Sound Blaster variants remain the same for this fork.
 
-Requirements:
- * HDPMI32i - DPMI host with port trapping; 32-bit protected-mode
- * HDPMI16i - DPMI host with port trapping; 16-bit protected-mode
- * JEMMEX 5.84 - V86 monitor with port trapping; v86-mode
- 
-VSBHDA uses some source codes from:
- * MPXPlay: https://mpxplay.sourceforge.net/, for sound card access
- * DOSBox: https://www.dosbox.com/, for OPL3 FM emulation
+# Compiling
+Only DJGPP makefiles are supported. DJGPP must be properly installed, and JWasm v2.17 (or later) must be available.
 
-To create the binaries, Open Watcom v2.0 is recommended. DJGPP v2.05
-may also be used, but cannot create the 16-bit variant of VSBHDA.
+Run `make -f djgpp.mak` for normal i386 version, and `make -f djgpp-p4.mak` to create a variant optimized for SSE2.
 
-In all cases the JWasm assembler (v2.17 or better) is also needed.
-For Open Watcom, a few things from the HX development package (HXDEV)
-are required - see Watcom.mak for details.
+# Usage
+Same as upstream VSBHDA. However, soundfonts require setting the `SOUNDFONT` environment variable to the path to soundfont (e.g. `set SOUNDFONT=\path\to\soundfont`) before launching. Alternatively, you may put a soundfont file named `sfont.sf2` in the directory where the executable resides and launch it in the exact same directory.
+
+The MPU-401 options from the BLASTER environment variable is respected, but can be overriden with the `/P` switch, immediately followed by the I/O address of the emulated MPU-401 without any spaces (e.g. `/P330`).
