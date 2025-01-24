@@ -69,7 +69,7 @@ void* tsfimpl_realloc(void *ptr, size_t size)
 static bool bReset = false;
 
 static const int midi_lengths[8] = { 3, 3, 3, 3, 2, 2, 3, 1 };
-static unsigned char midi_buffer[32];
+static unsigned char midi_buffer[256];
 static unsigned char midi_ptr = 0;
 static unsigned char midi_status_byte = 0x80;
 static unsigned char midi_mpu_status = 0x80;
@@ -92,9 +92,18 @@ static void VMPU_Write(uint16_t port, uint8_t value)
         } else {
                 if (!bReset) {
                         {
-				if (midi_status_byte == 0xF0 && value != 0xF7)
+				if (midi_status_byte == 0xF0 && value != 0xF7 && midi_ptr < 255) {
+					midi_buffer[midi_ptr++] = value;
 					return;
+				}
 				if (midi_status_byte == 0xF0 && value == 0xF7) {
+					midi_buffer[midi_ptr++] = value;
+					if (midi_buffer[1] == 0x41 && midi_buffer[3] == 0x42 && midi_buffer[4] == 0x12 && midi_ptr >= 9) {
+						uint32_t addr = ((uint32_t)midi_buffer[5] << 16) + ((uint32_t)midi_buffer[6] << 8) + (uint32_t)midi_buffer[7];
+						if (addr == 0x400004 && tsfrenderer) {
+							tsf_set_volume(tsfrenderer, ((midi_buffer[8] > 127) ? 127 : midi_buffer[8]) / 127.f);
+						}
+					}
 					midi_status_byte = 0x80;
 					midi_buffer[0] = 0x80;
                                         midi_ptr = 0;
