@@ -341,6 +341,8 @@ struct tsf
 	float outSampleRate;
 	float globalGainDB;
 	int* refCount;
+
+	float convex_calculated_table[16384 + 1];
 };
 
 #ifndef TSF_NO_STDIO
@@ -417,7 +419,7 @@ static void tsf_hydra_read_shdr(struct tsf_hydra_shdr* i, struct tsf_stream* str
 
 struct tsf_riffchunk { tsf_fourcc id; tsf_u32 size; };
 struct tsf_envelope { float delay, attack, hold, decay, sustain, release, keynumToHold, keynumToDecay; };
-struct tsf_voice_envelope { float level, slope; int samplesUntilNextSegment; short segment, midiVelocity; struct tsf_envelope parameters; TSF_BOOL segmentIsExponential, isAmpEnv; };
+struct tsf_voice_envelope { float level, slope, *convexTable; int samplesUntilNextSegment, samplesForNextSegment; short segment, midiVelocity; struct tsf_envelope parameters; TSF_BOOL segmentIsExponential, isAmpEnv, segmentIsConvex; };
 struct tsf_voice_lowpass { double QInv, a0, a1, b1, b2, z1, z2; TSF_BOOL active; };
 struct tsf_voice_lfo { int samplesUntil; float level, delta; };
 
@@ -1011,6 +1013,7 @@ static void tsf_voice_envelope_nextsegment(struct tsf_voice_envelope* e, short a
 			{
 				e->segment = TSF_SEGMENT_DELAY;
 				e->segmentIsExponential = TSF_FALSE;
+				e->segmentIsConvex = TSF_FALSE;
 				e->level = 0.0;
 				e->slope = 0.0;
 				return;
@@ -1020,15 +1023,20 @@ static void tsf_voice_envelope_nextsegment(struct tsf_voice_envelope* e, short a
 			e->samplesUntilNextSegment = (int)(e->parameters.attack * outSampleRate);
 			if (e->samplesUntilNextSegment > 0)
 			{
+				/* Commented out this block because it seems out-of-spec. */
+#if 0
 				if (!e->isAmpEnv)
 				{
 					//mod env attack duration scales with velocity (velocity of 1 is full duration, max velocity is 0.125 times duration)
 					e->samplesUntilNextSegment = (int)(e->parameters.attack * ((145 - e->midiVelocity) / 144.0f) * outSampleRate);
 				}
+#endif
 				e->segment = TSF_SEGMENT_ATTACK;
 				e->segmentIsExponential = TSF_FALSE;
+				e->segmentIsConvex = !e->isAmpEnv;
 				e->level = 0.0f;
 				e->slope = 1.0f / e->samplesUntilNextSegment;
+				e->samplesForNextSegment = e->samplesUntilNextSegment;
 				return;
 			}
 			/* fall through */
@@ -1038,6 +1046,7 @@ static void tsf_voice_envelope_nextsegment(struct tsf_voice_envelope* e, short a
 			{
 				e->segment = TSF_SEGMENT_HOLD;
 				e->segmentIsExponential = TSF_FALSE;
+				e->segmentIsConvex = TSF_FALSE;
 				e->level = 1.0f;
 				e->slope = 0.0f;
 				return;
@@ -1049,6 +1058,7 @@ static void tsf_voice_envelope_nextsegment(struct tsf_voice_envelope* e, short a
 			{
 				e->segment = TSF_SEGMENT_DECAY;
 				e->level = 1.0f;
+				e->segmentIsConvex = TSF_FALSE;
 				if (e->isAmpEnv)
 				{
 					// I don't truly understand this; just following what LinuxSampler does.
@@ -1080,9 +1090,11 @@ static void tsf_voice_envelope_nextsegment(struct tsf_voice_envelope* e, short a
 			e->slope = 0.0f;
 			e->samplesUntilNextSegment = 0x7FFFFFFF;
 			e->segmentIsExponential = TSF_FALSE;
+			e->segmentIsConvex = TSF_FALSE;
 			return;
 		case TSF_SEGMENT_SUSTAIN:
 			e->segment = TSF_SEGMENT_RELEASE;
+			e->segmentIsConvex = TSF_FALSE;
 			e->samplesUntilNextSegment = tsf_voice_envelope_release_samples(e, outSampleRate);
 			if (e->isAmpEnv)
 			{
@@ -1100,13 +1112,14 @@ static void tsf_voice_envelope_nextsegment(struct tsf_voice_envelope* e, short a
 		case TSF_SEGMENT_RELEASE:
 		default:
 			e->segment = TSF_SEGMENT_DONE;
+			e->segmentIsConvex = TSF_FALSE;
 			e->segmentIsExponential = TSF_FALSE;
 			e->level = e->slope = 0.0f;
 			e->samplesUntilNextSegment = 0x7FFFFFF;
 	}
 }
 
-static void tsf_voice_envelope_setup(struct tsf_voice_envelope* e, struct tsf_envelope* new_parameters, int midiNoteNumber, short midiVelocity, TSF_BOOL isAmpEnv, float outSampleRate)
+static void tsf_voice_envelope_setup(struct tsf_voice_envelope* e, struct tsf_envelope* new_parameters, int midiNoteNumber, short midiVelocity, TSF_BOOL isAmpEnv, float outSampleRate, float* convexTable)
 {
 	e->parameters = *new_parameters;
 	if (e->parameters.keynumToHold)
@@ -1121,6 +1134,7 @@ static void tsf_voice_envelope_setup(struct tsf_voice_envelope* e, struct tsf_en
 	}
 	e->midiVelocity = midiVelocity;
 	e->isAmpEnv = isAmpEnv;
+	e->convexTable = convexTable;
 	tsf_voice_envelope_nextsegment(e, TSF_SEGMENT_NONE, outSampleRate);
 }
 
@@ -1128,7 +1142,17 @@ static void tsf_voice_envelope_process(struct tsf_voice_envelope* e, int numSamp
 {
 	if (e->slope)
 	{
-		if (e->segmentIsExponential) e->level *= TSF_POWF(e->slope, (float)numSamples);
+		if (e->segmentIsConvex) {
+			unsigned int index = (unsigned int)((((e->samplesForNextSegment - e->samplesUntilNextSegment) / (double)e->samplesForNextSegment)) * 16384.);
+			if (index > 16384)
+				index = 16384;
+
+			if (index < 0)
+				index = 0;
+
+			e->level = e->convexTable[index];
+		}
+		else if (e->segmentIsExponential) e->level *= TSF_POWF(e->slope, (float)numSamples);
 		else e->level += (e->slope * numSamples);
 	}
 	if ((e->samplesUntilNextSegment -= numSamples) <= 0)
@@ -1361,6 +1385,7 @@ TSFDEF tsf* tsf_load(struct tsf_stream* stream)
 	void* rawBuffer = TSF_NULL;
 	float* floatBuffer = TSF_NULL;
 	tsf_u32 smplCount = 0;
+	tsf_u32 i = 0;
 
 	if (!tsf_riffchunk_read(TSF_NULL, &chunkHead, stream) || !TSF_FourCCEquals(chunkHead.id, "sfbk"))
 	{
@@ -1446,6 +1471,13 @@ TSFDEF tsf* tsf_load(struct tsf_stream* stream)
 	TSF_FREE(hydra.pgens); TSF_FREE(hydra.insts); TSF_FREE(hydra.ibags);
 	TSF_FREE(hydra.imods); TSF_FREE(hydra.igens); TSF_FREE(hydra.shdrs);
 	TSF_FREE(rawBuffer);   TSF_FREE(floatBuffer);
+
+	res->convex_calculated_table[0] = 0;
+	res->convex_calculated_table[(sizeof(res->convex_calculated_table) / sizeof(float)) - 1] = 1.0f;
+	for (i = 1; i < 16383; i++) {
+		res->convex_calculated_table[i] = 1.f - (float)((-200. * 2. / 960.) * TSF_LOG(i / 16384.) / 2.3025850929940456840179914546844 /* M_LN10 */);
+	}
+
 	return res;
 }
 
@@ -1610,7 +1642,7 @@ TSFDEF int tsf_note_on(tsf* f, int preset_index, int key, float vel)
 		voice->playingKey = key;
 		voice->playIndex = voicePlayIndex;
 		voice->heldSustain = 0;
-		voice->noteGainDB = f->globalGainDB - ((region->attenuation / 10.0f) * 0.4) - tsf_gainToDecibels(1.0f / vel);
+		voice->noteGainDB = f->globalGainDB - ((region->attenuation / 10.0f) * 0.4f) - (tsf_gainToDecibels(1.0f / vel) * 2.0f);
 
 		if (f->channels)
 		{
@@ -1633,8 +1665,8 @@ TSFDEF int tsf_note_on(tsf* f, int preset_index, int key, float vel)
 		voice->loopEnd = (doLoop ? region->loop_end : 0);
 
 		// Setup envelopes.
-		tsf_voice_envelope_setup(&voice->ampenv, &region->ampenv, key, midiVelocity, TSF_TRUE, f->outSampleRate);
-		tsf_voice_envelope_setup(&voice->modenv, &region->modenv, key, midiVelocity, TSF_FALSE, f->outSampleRate);
+		tsf_voice_envelope_setup(&voice->ampenv, &region->ampenv, key, midiVelocity, TSF_TRUE, f->outSampleRate, f->convex_calculated_table);
+		tsf_voice_envelope_setup(&voice->modenv, &region->modenv, key, midiVelocity, TSF_FALSE, f->outSampleRate, f->convex_calculated_table);
 
 		// Setup lowpass filter.
 		lowpassFc = (region->initialFilterFc <= 13500 ? tsf_cents2Hertz((float)region->initialFilterFc) / f->outSampleRate : 1.0f);
@@ -1643,6 +1675,7 @@ TSFDEF int tsf_note_on(tsf* f, int preset_index, int key, float vel)
 		voice->lowpass.z1 = voice->lowpass.z2 = 0;
 		voice->lowpass.active = (lowpassFc < 0.499f);
 		if (voice->lowpass.active) tsf_voice_lowpass_setup(&voice->lowpass, lowpassFc);
+		voice->noteGainDB -= lowpassFilterQDB / 2.0f;
 
 		// Setup LFO filters.
 		tsf_voice_lfo_setup(&voice->modlfo, region->delayModLFO, region->freqModLFO, f->outSampleRate);
