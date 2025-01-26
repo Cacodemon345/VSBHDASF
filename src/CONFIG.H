@@ -33,6 +33,7 @@ struct globalvars {
 	int type; /* /T value */
 #if VMPU
 	int mpu;  /* /P value, default 330 */
+	unsigned int voices;
 #endif
 	int opl3;
 	int rm;

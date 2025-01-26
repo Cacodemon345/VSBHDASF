@@ -230,11 +230,14 @@ static void cv_channels_1_to_2( PCM_CV_TYPE_S *pcm_sample, unsigned int samplenu
 }
 
 static unsigned char fpu_buffer[512] __attribute__((aligned(16)));
+
+extern void VMPU_Process_Messages(void);
 static void render_tsf_audio(int samples)
 {
     if (tsfrenderer)
     {
-	tsf_set_output(tsfrenderer, TSF_STEREO_INTERLEAVED, AU_getfreq( isr.hAU ), 0);
+        VMPU_Process_Messages();
+        tsf_set_output(tsfrenderer, TSF_STEREO_INTERLEAVED, AU_getfreq( isr.hAU ), 0);
         tsf_render_short(tsfrenderer, isr.pPCM, samples, 1);
     }
 }

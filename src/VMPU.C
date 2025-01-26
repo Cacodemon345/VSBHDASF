@@ -69,12 +69,95 @@ void* tsfimpl_realloc(void *ptr, size_t size)
 static bool bReset = false;
 
 static const int midi_lengths[8] = { 3, 3, 3, 3, 2, 2, 3, 1 };
-static unsigned char midi_buffer[256];
-static unsigned char midi_ptr = 0;
+static unsigned char midi_buffer[4096];
+static unsigned char midi_temp_buffer[4096];
+static unsigned int midi_ptr = 0;
+static unsigned int midi_available_ptr = 0;
+static unsigned int midi_message_cntr = 0;
+static bool midi_check_status_byte = 0;
+static bool midi_in_sysex = false;
 static unsigned char midi_status_byte = 0x80;
 static unsigned char midi_mpu_status = 0x80;
 
 extern tsf* tsfrenderer;
+
+void VMPU_Process_Messages(void)
+{
+        unsigned char* temp_buffer = midi_buffer;
+        unsigned int index = 0;
+        while (index < midi_available_ptr) {
+                switch (*temp_buffer & 0xF0) {
+                        case 0xA0:
+                        case 0xD0:
+                                {
+                                        index += midi_lengths[(temp_buffer[0] >> 4) - 0x8];
+                                        temp_buffer += midi_lengths[(temp_buffer[0] >> 4) - 0x8];
+                                        break;
+                                }
+                        case 0x80:
+                                tsf_channel_note_off(tsfrenderer, temp_buffer[0] & 0xf, temp_buffer[1]);
+                                index += midi_lengths[(temp_buffer[0] >> 4) - 0x8];
+                                temp_buffer += midi_lengths[(temp_buffer[0] >> 4) - 0x8];
+                                break;
+                        case 0x90:
+                                tsf_channel_note_on(tsfrenderer, temp_buffer[0] & 0xf, temp_buffer[1], temp_buffer[2] / 127.0f);
+                                index += midi_lengths[(temp_buffer[0] >> 4) - 0x8];
+                                temp_buffer += midi_lengths[(temp_buffer[0] >> 4) - 0x8];
+                                break;
+                        case 0xE0:
+                                tsf_channel_set_pitchwheel(tsfrenderer, temp_buffer[0] & 0xf, (temp_buffer[1] & 0x7f) | ((temp_buffer[2] & 0x7f) << 7));
+                                index += midi_lengths[(temp_buffer[0] >> 4) - 0x8];
+                                temp_buffer += midi_lengths[(temp_buffer[0] >> 4) - 0x8];
+                                break;
+                        case 0xC0:
+                                tsf_channel_set_presetnumber(tsfrenderer, temp_buffer[0] & 0xf, temp_buffer[1], (temp_buffer[0] & 0xf) == 0x9);
+                                index += midi_lengths[(temp_buffer[0] >> 4) - 0x8];
+                                temp_buffer += midi_lengths[(temp_buffer[0] >> 4) - 0x8];
+                                break;
+                        case 0xB0:
+                                tsf_channel_midi_control(tsfrenderer, temp_buffer[0] & 0xf, temp_buffer[1], temp_buffer[2]);
+                                index += midi_lengths[(temp_buffer[0] >> 4) - 0x8];
+                                temp_buffer += midi_lengths[(temp_buffer[0] >> 4) - 0x8];
+                                break;
+                        case 0xF0: {
+                                        if (*temp_buffer == 0xFF) {
+                                                int channel = 0;
+                                                for (channel = 0; channel < 16; channel++) {
+                                                        tsf_channel_midi_control(tsfrenderer, channel, 120, 0);
+                                                        tsf_channel_midi_control(tsfrenderer, channel, 121, 0);
+                                                        if (channel == 9)
+                                                                tsf_channel_set_bank_preset(tsfrenderer, 9, 128, 0);
+                                                }
+                                        }
+                                        if (*temp_buffer == 0xF0) {
+                                                unsigned int sysexlen = 0;
+                                                while (*temp_buffer != 0xF7) {
+                                                        index++;
+                                                        temp_buffer += 1;
+                                                        sysexlen++;
+                                                }
+                                                temp_buffer -= sysexlen;
+                                                if (temp_buffer[1] == 0x41 && midi_buffer[3] == 0x42 && midi_buffer[4] == 0x12 && sysexlen >= 9) {
+                                                        uint32_t addr = ((uint32_t)temp_buffer[5] << 16) + ((uint32_t)temp_buffer[6] << 8) + (uint32_t)temp_buffer[7];
+                                                        if (addr == 0x400004 && tsfrenderer) {
+                                                                tsf_set_volume(tsfrenderer, ((temp_buffer[8] > 127) ? 127 : temp_buffer[8]) / 127.f);
+                                                        }
+                                                }
+                                                temp_buffer += sysexlen;
+                                        } else {
+                                                index += midi_lengths[(temp_buffer[0] >> 4) - 0x8];
+                                                temp_buffer += midi_lengths[(temp_buffer[0] >> 4) - 0x8];
+                                        }
+                                        break;
+                                }
+                }
+        }
+
+        memcpy(midi_temp_buffer, midi_buffer + midi_available_ptr, midi_ptr - midi_available_ptr);
+        memcpy(midi_buffer, midi_temp_buffer, midi_ptr - midi_available_ptr);
+        midi_ptr -= midi_available_ptr;
+        midi_available_ptr = 0;
+}
 
 static void VMPU_Write(uint16_t port, uint8_t value)
 ////////////////////////////////////////////////////
@@ -87,72 +170,50 @@ static void VMPU_Write(uint16_t port, uint8_t value)
                 if ( value == 0xff ) {
                         bReset = true;
                         midi_ptr = 0;
+                        midi_available_ptr = 0;
+                        midi_message_cntr = 0;
+                        midi_check_status_byte = false;
                         midi_mpu_status &= ~0x80;
                 }
         } else {
                 if (!bReset) {
                         {
-				if (midi_status_byte == 0xF0 && value != 0xF7 && midi_ptr < 255) {
-					midi_buffer[midi_ptr++] = value;
-					return;
-				}
-				if (midi_status_byte == 0xF0 && value == 0xF7) {
-					midi_buffer[midi_ptr++] = value;
-					if (midi_buffer[1] == 0x41 && midi_buffer[3] == 0x42 && midi_buffer[4] == 0x12 && midi_ptr >= 9) {
-						uint32_t addr = ((uint32_t)midi_buffer[5] << 16) + ((uint32_t)midi_buffer[6] << 8) + (uint32_t)midi_buffer[7];
-						if (addr == 0x400004 && tsfrenderer) {
-							tsf_set_volume(tsfrenderer, ((midi_buffer[8] > 127) ? 127 : midi_buffer[8]) / 127.f);
-						}
-					}
-					midi_status_byte = 0x80;
-					midi_buffer[0] = 0x80;
-                                        midi_ptr = 0;
-					return;
-				}
-                                if ((value & 0xF0) < 0x80 && midi_ptr == 0) {
-                                        midi_buffer[0] = midi_status_byte;
-                                        midi_ptr = 1;
+                                if (midi_ptr >= 4092)
+                                        return;
+
+                                if (midi_in_sysex) {                                
+                                        midi_buffer[midi_ptr++] = value;
+                                        if (value == 0xF7) {
+                                                midi_available_ptr = midi_ptr;
+                                                midi_message_cntr = 0;
+                                                midi_check_status_byte = false;
+                                                midi_in_sysex = false;
+                                        }
+                                        return;
+                                }
+
+                                if ((value & 0xF0) < 0x80 && midi_check_status_byte) {
+                                        midi_buffer[midi_ptr++] = midi_status_byte;
+                                        midi_check_status_byte = false;
 				}
 				
+                                if ((value & 0xF0) >= 0x80) {
+                                        midi_status_byte = value;
+                                        midi_check_status_byte = false;
+                                }
+        
                                 midi_buffer[midi_ptr++] = value;
-                                midi_status_byte = midi_buffer[0];
+                                midi_message_cntr++;
 
-				if (midi_buffer[0] == 0xF0)
-					return;
-
-                                if (midi_ptr >= midi_lengths[(midi_buffer[0] >> 4) - 0x8]) {
-                                        midi_ptr = 0;
-                                        if (tsfrenderer) {
-                                                //asm("cli");
-                                                switch (midi_status_byte & 0xF0)
-                                                {
-                                                        case 0x80:
-                                                                tsf_channel_note_off(tsfrenderer, midi_buffer[0] & 0xf, midi_buffer[1]);
-                                                                break;
-                                                        case 0x90:
-                                                                tsf_channel_note_on(tsfrenderer, midi_buffer[0] & 0xf, midi_buffer[1], midi_buffer[2] / 127.0f);
-                                                                break;
-                                                        case 0xE0:
-                                                                tsf_channel_set_pitchwheel(tsfrenderer, midi_buffer[0] & 0xf, (midi_buffer[1] & 0x7f) | ((midi_buffer[2] & 0x7f) << 7));
-                                                                break;
-                                                        case 0xC0:
-                                                                tsf_channel_set_presetnumber(tsfrenderer, midi_buffer[0] & 0xf, midi_buffer[1], (midi_buffer[0] & 0xf) == 0x9);
-                                                                break;
-                                                        case 0xB0:
-                                                                tsf_channel_midi_control(tsfrenderer, midi_buffer[0] & 0xf, midi_buffer[1], midi_buffer[2]);
-                                                                break;
-                                                        case 0xF0:
-                                                                if (midi_status_byte == 0xFF) {
-                                                                	int channel = 0;
-                                                                        for (channel = 0; channel < 16; channel++) {
-                                                                        	tsf_channel_midi_control(tsfrenderer, channel, 120, 0);
-                                                                                tsf_channel_midi_control(tsfrenderer, channel, 121, 0);
-                                                                        }
-                                                                }
-                                                                break;
-                                                }
-                                                //asm("sti");
+                                if (midi_message_cntr >= midi_lengths[(midi_buffer[midi_available_ptr] >> 4) - 0x8]) {
+                                        if (value == 0xF0) {
+                                                midi_message_cntr = 0;
+                                                midi_in_sysex = true;
+                                                return;
                                         }
+                                        midi_available_ptr = midi_ptr;
+                                        midi_message_cntr = 0;
+                                        midi_check_status_byte = true;
                                 }
                         }
                 }
@@ -172,7 +233,7 @@ static uint8_t VMPU_Read(uint16_t port)
                 }
                 return 0xfe; // Always return Active Sensing.
         } else {
-                return midi_mpu_status;
+                return midi_mpu_status | (midi_ptr >= 4092 ? 0x40 : 0);
         }
 }
 

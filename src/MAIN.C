@@ -109,6 +109,7 @@ HDMA_DEFAULT,
 TYPE_DEFAULT,
 #if VMPU
 0, /* no default for Midi port */
+64, /* 64 TinySoundFont voices */
 #endif
 true, true, true, VOL_DEFAULT, 16, /* OPL3, rm, pm, vol, buffsize */
 #if SLOWDOWN
@@ -132,7 +133,8 @@ static const struct {
     "/T", "Set SB Type [0-5, def 4]", &gvars.type,
 #endif
 #if VMPU
-    "/P", "Set Midi port [330|300, no def]", &gvars.mpu,
+    "/P", "Set MIDI port [330|300, no def]", &gvars.mpu,
+    "/MV","Set max voices [32-256, def 64]", &gvars.voices,
 #endif
     "/OPL","Set OPL3 emulation [0|1, def 1]", &gvars.opl3,
     "/PM", "Set protected-mode support [0|1, def 1]", &gvars.pm,
@@ -525,16 +527,22 @@ int main(int argc, char* argv[])
 
 #if VMPU
     if (gvars.mpu) {
-    if (getenv("SOUNDFONT")) tsfrenderer = tsf_load_filename(getenv("SOUNDFONT"));
-    if (!tsfrenderer) tsfrenderer = tsf_load_filename("sfont.sf2");
-    if (tsfrenderer) {
-        int channel = 0;
-        printf("TinySoundFont loaded\n");
-        tsf_set_max_voices(tsfrenderer, 64);
-	tsf_set_output(tsfrenderer, TSF_STEREO_INTERLEAVED, gm.freq, 0);
-        for (channel = 0; channel < 16; channel++)
-                tsf_channel_midi_control(tsfrenderer, channel, 121, 0);
-    }
+        char* soundfont_file = getenv("SOUNDFONT");
+        if (!soundfont_file) soundfont_file = "sfont.sf2";
+        tsfrenderer = tsf_load_filename(soundfont_file);
+        if (!tsfrenderer) { soundfont_file = "sfont.sf2"; tsfrenderer = tsf_load_filename("sfont.sf2"); }
+        if (tsfrenderer) {
+            int channel = 0;
+            printf("TinySoundFont loaded (using soundfont %s)\n", soundfont_file);
+            if (gvars.voices < 32) gvars.voices = 32;
+            if (gvars.voices > 256) gvars.voices = 256;
+            printf("Maximum voice limit: %d\n", gvars.voices);
+            tsf_set_max_voices(tsfrenderer, gvars.voices);
+            tsf_set_output(tsfrenderer, TSF_STEREO_INTERLEAVED, gm.freq, 0);
+            for (channel = 0; channel < 16; channel++)
+                    tsf_channel_midi_control(tsfrenderer, channel, 121, 0);
+            tsf_channel_set_bank_preset(tsfrenderer, 9, 128, 0);
+        }
     }
 #endif
 
