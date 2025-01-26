@@ -136,6 +136,11 @@ void VMPU_Process_Messages(void)
                                                         temp_buffer += 1;
                                                         sysexlen++;
                                                 }
+
+                                                index++;
+                                                temp_buffer += 1;
+                                                sysexlen++;
+
                                                 temp_buffer -= sysexlen;
                                                 if (temp_buffer[1] == 0x41 && midi_buffer[3] == 0x42 && midi_buffer[4] == 0x12 && sysexlen >= 9) {
                                                         uint32_t addr = ((uint32_t)temp_buffer[5] << 16) + ((uint32_t)temp_buffer[6] << 8) + (uint32_t)temp_buffer[7];
