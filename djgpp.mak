@@ -37,7 +37,7 @@ OBJFILES=\
 INCLUDE_DIRS=src mpxplay
 SRC_DIRS=src mpxplay
 
-C_OPT_FLAGS=-Os -fno-asynchronous-unwind-tables
+C_OPT_FLAGS=-Os -fno-asynchronous-unwind-tables -fno-strict-aliasing
 C_EXTRA_FLAGS=-march=i386
 LD_FLAGS=$(addprefix -Xlinker ,$(LD_EXTRA_FLAGS))
 LD_EXTRA_FLAGS=-Map $(OUTD)/$(NAME).map
@@ -47,7 +47,7 @@ LIBS=$(addprefix -l,stdcxx m)
 
 COMPILE.asm.o=jwasm.exe -q -djgpp -Istartup -D?MODEL=small -DDJGPP -DPENTIUM4=0 -Fo$@ $<
 COMPILE.c.o=gcc $(C_DEBUG_FLAGS) $(C_OPT_FLAGS) $(C_EXTRA_FLAGS) $(CFLAGS) $(INCLUDES) -c $< -o $@
-COMPILE.cpp.o=gcc $(C_DEBUG_FLAGS) $(C_OPT_FLAGS) $(C_EXTRA_FLAGS) $(CPPFLAGS) $(INCLUDES) -c $< -o $@
+COMPILE.cpp.o=gcc $(C_DEBUG_FLAGS) $(C_OPT_FLAGS) $(C_EXTRA_FLAGS) $(CPPFLAGS) -fno-exceptions $(INCLUDES) -c $< -o $@
 
 $(OUTD)/%.o: src/%.c
 	$(COMPILE.c.o)
@@ -61,16 +61,16 @@ $(OUTD)/%.o: src/%.asm
 $(OUTD)/%.o: mpxplay/%.c
 	$(COMPILE.c.o)
 
-all:: $(OUTD) $(OUTD)/$(NAME)d.exe
+all:: $(OUTD) $(OUTD)/$(NAME).exe
 
 $(OUTD):
 	@mkdir $(OUTD)
 
-$(OUTD)/$(NAME)d.exe:: $(OUTD)/$(NAME).ar
+$(OUTD)/$(NAME).exe:: $(OUTD)/$(NAME).ar
 	gcc -o $@ $(OUTD)/main.o $(OUTD)/$(NAME).ar $(LD_FLAGS) $(LIBS)
 	strip -s $@
 	exe2coff $@
-	copy /b res\stub.bin + $(OUTD)\$(NAME)d $(OUTD)\$(NAME)d.exe
+	copy /b res\stub.bin + $(OUTD)\$(NAME)d $(OUTD)\$(NAME).exe
 
 $(OUTD)/$(NAME).ar:: $(OBJFILES)
 	ar --target=coff-go32 r $(OUTD)/$(NAME).ar $(OBJFILES)
@@ -120,7 +120,7 @@ $(OUTD)/uninst.o::   uninst.asm
 $(OUTD)/vioout.o::   vioout.asm
 
 clean::
-	del $(OUTD)\$(NAME)d.exe
+	del $(OUTD)\$(NAME).exe
 	del $(OUTD)\$(NAME).ar
 	del $(OUTD)\*.o
 

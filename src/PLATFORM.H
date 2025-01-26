@@ -11,15 +11,14 @@ extern "C"
 static inline unsigned int BSF(unsigned int x)
 {
 	unsigned int i;
-	asm("bsf %1, %0" : "=r" (i) : "rm" (x));
+	asm volatile("bsf %1, %0" : "=r" (i) : "rm" (x));
 	return i;
 }
-static inline unsigned long long rdtsc(void)
-{
-	unsigned long long tsc;
-	asm( "rdtsc" : "=r" (tsc) );
-	return tsc;
-}
+//static inline unsigned long long rdtsc(void)
+//{
+//	return __builtin_ia32_rdtsc();
+//}
+#define rdtsc() __builtin_ia32_rdtsc()
 //static inline void fpu_save(void * buffer) { }
 //static inline void fpu_restore(void * buffer) { }
 #ifdef PENTIUM4
@@ -30,8 +29,10 @@ static unsigned int defmxcsr = 0x1f80;
 #define fpu_save(buffer) asm volatile("fnsave %0" : "=m"((buffer)))
 #define fpu_restore(buffer) asm volatile("frstor %0" :: "m"(buffer))
 #endif
-static inline void _disable_ints(void) { asm("mov $0x900, %%ax\n\t" "int $0x31" ::: "eax" ); }
-static inline void  _enable_ints(void) { asm("mov $0x901, %%ax\n\t" "int $0x31" ::: "eax" ); }
+//static inline void _disable_ints(void) { asm("mov $0x900, %%ax\n\t" "int $0x31" ::: "eax" ); }
+//static inline void  _enable_ints(void) { asm("mov $0x901, %%ax\n\t" "int $0x31" ::: "eax" ); }
+#define _disable_ints() asm volatile("mov $0x900, %%ax\n\t" "int $0x31" ::: "eax" )
+#define _enable_ints() asm volatile("mov $0x901, %%ax\n\t" "int $0x31" ::: "eax" )
 
 #define _my_psp() _go32_info_block.linear_address_of_original_psp
 #define _my_rmstack() _go32_info_block.linear_address_of_transfer_buffer

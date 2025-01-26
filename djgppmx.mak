@@ -7,13 +7,13 @@ ifndef DEBUG
 DEBUG=0
 endif
 
-NAME=vsbhdap4
+NAME=vsbhdamx
 
 ifeq ($(DEBUG),1)
-OUTD=djgppp4d
+OUTD=djgppmxd
 C_DEBUG_FLAGS=-D_DEBUG
 else
-OUTD=djgppp4
+OUTD=djgppmx
 C_DEBUG_FLAGS=
 endif
 
@@ -37,8 +37,8 @@ OBJFILES=\
 INCLUDE_DIRS=src mpxplay
 SRC_DIRS=src mpxplay
 
-C_OPT_FLAGS=-Os -fno-asynchronous-unwind-tables -fno-strict-aliasing -frounding-math
-C_EXTRA_FLAGS=-march=pentium4 -msse -msse2 -mmmx -mfpmath=both -DPENTIUM4
+C_OPT_FLAGS=-Os -fno-asynchronous-unwind-tables -fno-strict-aliasing
+C_EXTRA_FLAGS=-march=pentium-mmx -mmmx -mfpmath=387
 LD_FLAGS=$(addprefix -Xlinker ,$(LD_EXTRA_FLAGS))
 LD_EXTRA_FLAGS=-Map $(OUTD)/$(NAME).map
 
