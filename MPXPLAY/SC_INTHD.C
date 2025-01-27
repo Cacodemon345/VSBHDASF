@@ -35,7 +35,8 @@
 
 #define INTHD_MAX_CHANNELS 8
 #ifdef SBEMU
-#define AZX_PERIOD_SIZE 512
+extern struct globalvars gvars;
+#define AZX_PERIOD_SIZE gvars.periodsize
 #else
 #define AZX_PERIOD_SIZE 4096
 #endif

@@ -115,6 +115,9 @@ true, true, true, VOL_DEFAULT, 16, /* OPL3, rm, pm, vol, buffsize */
 #if SLOWDOWN
 0,
 #endif
+0,
+0,
+512,
 };
 
 static const struct {
@@ -145,6 +148,7 @@ static const struct {
 #if SLOWDOWN
     "/SD",  "Set slowdown factor [def 0]", &gvars.slowdown,
 #endif
+    "/PS", "Set period size (HDA only) [256-2048, def 512]", &gvars.periodsize,
     "/O",  "Set output (HDA only) [0=lineout|1=speaker|2=hp, def 0]", &gvars.pin,
     "/DEV", "Set start index for device scan (HDA only) [def 0]", &gvars.device,
     NULL, NULL, 0,
@@ -340,6 +344,13 @@ int main(int argc, char* argv[])
         printf("\nSource code used from:\n    MPXPlay (https://mpxplay.sourceforge.net/)\n    DOSBox (https://www.dosbox.com/)\n");
         return 0;
     }
+
+    /* Process /PS first. */
+    if (gvars.periodsize < 256) gvars.periodsize = 256;
+    if (gvars.periodsize > 2048) gvars.periodsize = 2048;
+
+    gvars.periodsize = (gvars.periodsize + 127) & ~127;
+
 
     if( gvars.base != 0x220 && gvars.base != 0x240 ) {
         printf("Error: invalid IO base address: %x\n", gvars.base );
@@ -545,6 +556,8 @@ int main(int argc, char* argv[])
         }
     }
 #endif
+
+    printf("Using HDA period size %d\n", gvars.periodsize);
 
     PIC_UnmaskIRQ( AU_getirq( gm.hAU ) );
 

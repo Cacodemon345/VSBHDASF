@@ -45,6 +45,7 @@ struct globalvars {
 #endif
 	int pin;
 	int device;
+	int periodsize;
 };
 
 int _dprintf(const char *fmt, ... );

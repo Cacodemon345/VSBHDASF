@@ -173,6 +173,7 @@ static void VMPU_Write(uint16_t port, uint8_t value)
                 	midi_mpu_status &= ~0x80;
                 }
                 if ( value == 0xff ) {
+                        VMPU_Process_Messages();
                         bReset = true;
                         midi_ptr = 0;
                         midi_available_ptr = 0;
