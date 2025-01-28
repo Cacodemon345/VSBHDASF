@@ -214,12 +214,22 @@ static void VSB_Mixer_Write( uint8_t value )
 {
     dbgprintf(("VSB_Mixer_Write[%u]: value=%x\n", vsb.MixerRegIndex, value));
     int channels = VSB_GetChannels();
-    vsb.MixerRegs[vsb.MixerRegIndex] = value;
-    if ( vsb.MixerRegIndex == SB_MIXERREG_RESET )
+
+    if ( vsb.MixerRegIndex == SB_MIXERREG_RESET ) {
         VSB_MixerReset();
+        return;
+    }
     /* INT and DMA setup are readonly */
     if ( vsb.MixerRegIndex == SB_MIXERREG_INT_SETUP || vsb.MixerRegIndex == SB_MIXERREG_DMA_SETUP )
         return;
+
+    /* On SB16, 0x0E is completely unused. */
+    if ( vsb.MixerRegIndex == 0xe && vsb.DSPVER >= 0x400 )
+        return;
+
+
+    vsb.MixerRegs[vsb.MixerRegIndex] = value;
+
 #if SB16
     if( vsb.DSPVER >= 0x0400 ) { //SB16
         if( vsb.MixerRegIndex >= SB16_MIXERREG_MASTERL && vsb.MixerRegIndex <= SB16_MIXERREG_MIDIR ) {
@@ -329,7 +339,7 @@ static void DSP_Reset( uint8_t value )
 
         //vsb.MixerRegs[SB_MIXERREG_DMA_SETUP] = (1 << vsb.Dma8) & 0xEB;
 #if SB16
-        vsb.MixerRegs[SB_MIXERREG_DMA_SETUP] = ( (1 << vsb.Dma8) | ( vsb.Dma16 ? (1 << vsb.Dma16) : 0)) & 0xEB;
+        vsb.MixerRegs[SB_MIXERREG_DMA_SETUP] = (vsb.DSPVER < 0x400) ? ((1 << vsb.Dma8) & 0xB) : (( (1 << vsb.Dma8) | ( vsb.Dma16 ? (1 << vsb.Dma16) : 0)) & 0xEB);
 #else
         vsb.MixerRegs[SB_MIXERREG_DMA_SETUP] = (1 << vsb.Dma8) & 0xB;
 #endif
@@ -829,10 +839,16 @@ int VSB_IsSigned()
     return vsb.Signed;
 }
 
+int VSB_GetRealChannels()
+{
+    return (vsb.MixerRegs[SB_MIXERREG_MODEFILTER] & SB_MIXERREG_MODEFILTER_STEREO) ? 2 : 1;
+}
+
 int VSB_GetChannels()
 /////////////////////
 {
     /* MIXERREG_MODEFILTER is for SB Pro only, but in vsbhda also set for sb16 */
+    if (vsb.DSPVER >= 0x0400) return 1;
     return (vsb.MixerRegs[SB_MIXERREG_MODEFILTER] & SB_MIXERREG_MODEFILTER_STEREO) ? 2 : 1;
 }
 

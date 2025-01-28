@@ -322,7 +322,7 @@ static int SNDISR_Interrupt( void )
         int dmachannel = VSB_GetDMA();
         uint32_t freq = AU_getfreq( isr.hAU );
         int samplesize = max( 1, VSB_GetBits() / 8 );
-        int channels = VSB_GetChannels();
+        int channels = VSB_GetRealChannels();
         int IdxSm = 0; /* sample index in 16bit PCM buffer */
         int count; /* samples to handle in this turn */
         bool resample; //don't resample if sample rates are close

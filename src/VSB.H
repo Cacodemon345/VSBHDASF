@@ -40,6 +40,7 @@ unsigned int VSB_GetBits( void );
 int VSB_IsSigned( void );
 int VSB_IsSilent( void );
 int VSB_GetChannels( void );
+int VSB_GetRealChannels( void );
 int VSB_GetSampleRate( void );
 uint32_t VSB_GetSampleBufferSize( void );
 uint32_t VSB_GetPos( void ); //get pos in bytes
