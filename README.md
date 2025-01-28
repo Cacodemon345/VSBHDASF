@@ -10,7 +10,7 @@ Requirements, supported sound cards and emulated Sound Blaster variants remain t
 # Compiling
 Only DJGPP makefiles are supported. DJGPP must be properly installed, and JWasm v2.17 (or later) must be available.
 
-Run `make -f djgpp.mak` for normal i386 version, and `make -f djgpp-p4.mak` to create a variant optimized for SSE2.
+Run `make -f djgpp.mak` for normal i386 version, and `make -f djgpp-p4.mak` to create a variant optimized for SSE2. DOSLFN **must** be loaded or else it will fail.
 
 # Usage
 Same as upstream VSBHDA. However, soundfonts require setting the `SOUNDFONT` environment variable to the path to soundfont (e.g. `set SOUNDFONT=\path\to\soundfont`) before launching. Alternatively, you may put a soundfont file named `sfont.sf2` in the directory where the executable resides and launch it in the exact same directory.
