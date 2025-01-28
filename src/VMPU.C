@@ -78,6 +78,8 @@ static bool midi_check_status_byte = 0;
 static bool midi_in_sysex = false;
 static unsigned char midi_status_byte = 0x80;
 static unsigned char midi_mpu_status = 0x80;
+static const unsigned char gm_reset[6] = { 0xF0, 0x7E, 0x7F, 0x09, 0x01, 0xF7 };
+static const unsigned char gs_reset[11] = { 0xF0, 0x41, 0x10, 0x42, 0x12, 0x40, 0x00, 0x7F, 0x00, 0x41, 0xF7 };
 
 extern tsf* tsfrenderer;
 
@@ -123,6 +125,7 @@ void VMPU_Process_Messages(void)
                                         if (*temp_buffer == 0xFF) {
                                                 int channel = 0;
                                                 for (channel = 0; channel < 16; channel++) {
+                                                        tsf_set_volume(tsfrenderer, 1.0f);
                                                         tsf_channel_midi_control(tsfrenderer, channel, 120, 0);
                                                         tsf_channel_midi_control(tsfrenderer, channel, 121, 0);
                                                         if (channel == 9)
@@ -130,7 +133,8 @@ void VMPU_Process_Messages(void)
                                                 }
                                         }
                                         if (*temp_buffer == 0xF0) {
-                                                unsigned int sysexlen = 0;
+                                                unsigned char* sysexbuf = temp_buffer;
+                                                unsigned int sysexlen = 0, i = 0;
                                                 while (*temp_buffer != 0xF7) {
                                                         index++;
                                                         temp_buffer += 1;
@@ -141,14 +145,35 @@ void VMPU_Process_Messages(void)
                                                 temp_buffer += 1;
                                                 sysexlen++;
 
-                                                temp_buffer -= sysexlen;
-                                                if (temp_buffer[1] == 0x41 && midi_buffer[3] == 0x42 && midi_buffer[4] == 0x12 && sysexlen >= 9) {
-                                                        uint32_t addr = ((uint32_t)temp_buffer[5] << 16) + ((uint32_t)temp_buffer[6] << 8) + (uint32_t)temp_buffer[7];
+//						_dprintf("SYSEX MESSAGE: ");
+//						for (i = 0; i < sysexlen; i++) {
+//							_dprintf("0x%02X ", sysexbuf[i]);
+//						}
+//						_dprintf("\n");
+
+                                                if (sysexbuf[1] == 0x41 && sysexbuf[3] == 0x42 && sysexbuf[4] == 0x12 && sysexlen >= 9) {
+                                                        uint32_t addr = ((uint32_t)sysexbuf[5] << 16) + ((uint32_t)sysexbuf[6] << 8) + (uint32_t)sysexbuf[7];
                                                         if (addr == 0x400004 && tsfrenderer) {
-                                                                tsf_set_volume(tsfrenderer, ((temp_buffer[8] > 127) ? 127 : temp_buffer[8]) / 127.f);
+                                                                tsf_set_volume(tsfrenderer, ((sysexbuf[8] > 127) ? 127 : sysexbuf[8]) / 127.f);
                                                         }
                                                 }
-                                                temp_buffer += sysexlen;
+                                                if (tsfrenderer && sysexbuf[1] == 0x7f && sysexbuf[2] == 0x7f && sysexbuf[3] == 0x04 && sysexbuf[4] == 0x01)
+                                                {
+//                                                        _dprintf("GM Master Vol 0x%02X\n", sysexbuf[6]);
+                                                        tsf_set_volume(tsfrenderer, sysexbuf[6] / 127.f);
+                                                }
+                                                // TODO: Differentiate between GS and GM Resets.
+                                                if (!memcmp(sysexbuf, gs_reset, sizeof(gs_reset)) || !memcmp(sysexbuf, gm_reset, sizeof(gm_reset))) {
+                                                        int channel = 0;
+                                                        for (channel = 0; channel < 16; channel++) {
+                                                                tsf_channel_midi_control(tsfrenderer, channel, 120, 0);
+                                                                tsf_channel_midi_control(tsfrenderer, channel, 121, 0);
+                                                                if (channel == 9)
+                                                                        tsf_channel_set_bank_preset(tsfrenderer, 9, 128, 0);
+                                                        }
+                                                        tsf_set_volume(tsfrenderer, 1.0f);
+                                                }
+
                                         } else {
                                                 index += midi_lengths[(temp_buffer[0] >> 4) - 0x8];
                                                 temp_buffer += midi_lengths[(temp_buffer[0] >> 4) - 0x8];

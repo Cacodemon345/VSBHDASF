@@ -237,7 +237,7 @@ static void render_tsf_audio(int samples)
     if (tsfrenderer)
     {
         VMPU_Process_Messages();
-        tsf_set_output(tsfrenderer, TSF_STEREO_INTERLEAVED, AU_getfreq( isr.hAU ), 0);
+        tsf_set_samplerate_output(tsfrenderer, AU_getfreq( isr.hAU ));
         tsf_render_short(tsfrenderer, isr.pPCM, samples, 1);
     }
 }

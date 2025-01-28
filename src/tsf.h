@@ -153,6 +153,9 @@ enum TSFOutputMode
 //   global_gain_db: volume gain in decibels (>0 means higher, <0 means lower)
 TSFDEF void tsf_set_output(tsf* f, enum TSFOutputMode outputmode, int samplerate, float global_gain_db CPP_DEFAULT0);
 
+// Set the output samplerate.
+TSFDEF void tsf_set_samplerate_output(tsf* f, int samplerate);
+
 // Set the global gain as a volume factor
 //   global_gain: the desired volume where 1.0 is 100%
 TSFDEF void tsf_set_volume(tsf* f, float global_gain);
@@ -1556,6 +1559,11 @@ TSFDEF void tsf_set_output(tsf* f, enum TSFOutputMode outputmode, int samplerate
 	f->outputmode = outputmode;
 	f->outSampleRate = (float)(samplerate >= 1 ? samplerate : 44100.0f);
 	f->globalGainDB = global_gain_db;
+}
+
+TSFDEF void tsf_set_samplerate_output(tsf* f, int samplerate)
+{
+	f->outSampleRate = (float)(samplerate >= 1 ? samplerate : 44100.0f);
 }
 
 TSFDEF void tsf_set_volume(tsf* f, float global_volume)
