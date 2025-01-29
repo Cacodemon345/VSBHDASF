@@ -70,7 +70,7 @@ $(OUTD)/$(NAME).exe:: $(OUTD)/$(NAME).ar
 	gcc -o $@ $(OUTD)/main.o $(OUTD)/$(NAME).ar $(LD_FLAGS) $(LIBS)
 	strip -s $@
 	exe2coff $@
-	copy /b res\stub.bin + $(OUTD)\$(NAME)d $(OUTD)\$(NAME).exe
+	copy /b res\stub.bin + $(OUTD)\$(NAME) $(OUTD)\$(NAME).exe
 
 $(OUTD)/$(NAME).ar:: $(OBJFILES)
 	ar --target=coff-go32 r $(OUTD)/$(NAME).ar $(OBJFILES)
