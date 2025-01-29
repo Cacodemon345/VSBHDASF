@@ -83,10 +83,10 @@
 
 #define ICH_BD_IOC        0x8000 //buffer descriptor high word: interrupt on completion (IOC)
 
-#define ICH_DMABUF_MAX_PERIODS  32 // number of entries in the Buffer Descriptor List
-#define ICH_DMABUF_PERIODS   4 // number of "used" entries in the Buffer Descriptor List
-#define ICH_BDL_ENTRY_SIZE (2 * sizeof(uint32_t))  // size of one entry in the Buffer Descriptor List
-#define ICH_DMABUF_ALIGN (ICH_DMABUF_MAX_PERIODS*ICH_BDL_ENTRY_SIZE) // 256
+#define ICH_DMABUF_PERIODS  32
+#define ICH_MAX_CHANNELS     2
+#define ICH_MAX_BYTES        4
+#define ICH_DMABUF_ALIGN (ICH_DMABUF_PERIODS * ICH_MAX_CHANNELS * ICH_MAX_BYTES) // 256
 #if 1 //def SBEMU
 #define ICH_INT_INTERVAL     1 //interrupt interval in periods
 #endif
@@ -115,7 +115,7 @@ struct intel_card_s {
 };
 
 enum { DEVICE_INTEL, DEVICE_INTEL_ICH4, DEVICE_NFORCE, DEVICE_SIS };
-static char *ich_devnames[4]={"ICH","ICH4","NForce","SiS7012"};
+static char *ich_devnames[4]={"ICH","ICH4","NForce", "SiS7012"};
 
 static void snd_intel_measure_ac97_clock( struct audioout_info_s *aui );
 
@@ -202,21 +202,13 @@ static unsigned int snd_intel_buffer_init( struct intel_card_s *card, struct aud
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 {
 	unsigned int bytes_per_sample = (aui->bits_set > 16) ? 4 : 2;
-	size_t buffer_descriptor_list_size = ICH_DMABUF_MAX_PERIODS*ICH_BDL_ENTRY_SIZE;
 
 	card->pcmout_bufsize = MDma_get_max_pcmoutbufsize( aui, 0, ICH_DMABUF_ALIGN, bytes_per_sample, 0 );
-
-	// Allocate Buffer Descriptor List + PCM output buffer in a single allocation
-	card->dm = MDma_alloc_cardmem(buffer_descriptor_list_size + card->pcmout_bufsize);
-
-	if (!card->dm) return 0;
-
-	// buffer descriptor list requires ICH_BDL_ENTRY_SIZE alignment,
-	// but dos-allocmem gives 16 byte align (so we don't need alignment correction)
-	card->virtualpagetable = (uint32_t *)card->dm->pMem;
-	card->pcmout_buffer = card->dm->pMem + buffer_descriptor_list_size;
-
-	// DMA buffer written by MDma_writedata() and MDma_clearbuf()
+	card->dm = MDma_alloc_cardmem(ICH_DMABUF_PERIODS * 2 * sizeof(uint32_t) + card->pcmout_bufsize );
+	if (!card->dm)
+        return 0;
+	card->virtualpagetable = (uint32_t *)card->dm->pMem; // pagetable requires 8 byte align, but dos-allocmem gives 16 byte align (so we don't need alignment correction)
+	card->pcmout_buffer = ((char *)card->virtualpagetable) + ICH_DMABUF_PERIODS * 2 * sizeof(uint32_t);
 	aui->card_DMABUFF = card->pcmout_buffer;
 #ifdef SBEMU
 	memset(card->pcmout_buffer, 0, card->pcmout_bufsize);
@@ -240,11 +232,7 @@ static void snd_intel_chip_init(struct intel_card_s *card)
 	snd_intel_write_32( card, ICH_GLOB_STAT_REG, cmd);
 
 	cmd = snd_intel_read_32(card, ICH_GLOB_CNT_REG);
-	if (card->device_type == DEVICE_SIS) {
-		cmd &= ~(ICH_GLOB_CNT_ACLINKOFF | ICH_SIS_PCM_246_MASK);
-	} else {
-		cmd &= ~(ICH_GLOB_CNT_ACLINKOFF | ICH_PCM_246_MASK);
-	}
+	cmd &= ~(ICH_GLOB_CNT_ACLINKOFF | (card->device_type == DEVICE_SIS ? ICH_SIS_PCM_246_MASK : ICH_PCM_246_MASK));
 	// finish cold or do warm reset
 	cmd |= ((cmd & ICH_GLOB_CNT_AC97COLD) == 0) ? ICH_GLOB_CNT_AC97COLD : ICH_GLOB_CNT_AC97WARM;
 	snd_intel_write_32(card, ICH_GLOB_CNT_REG, cmd);
@@ -275,7 +263,6 @@ static void snd_intel_chip_init(struct intel_card_s *card)
 		/* unmute the output on SIS7012 */
 		snd_intel_write_16(card, 0x4c, snd_intel_read_16(card, 0x4c) | 1);
 	}
-
 	dbgprintf(("snd_intel_chip_init: exit\n"));
 }
 
@@ -333,7 +320,8 @@ static void snd_intel_prepare_playback( struct intel_card_s *card, struct audioo
 	cmd = snd_intel_read_32( card, ICH_GLOB_CNT_REG );
 	if (card->device_type == DEVICE_SIS) {
 		cmd &= ~(ICH_SIS_PCM_246_MASK | ICH_PCM_20BIT);
-	} else {
+	}
+	else {
 		cmd &= ~(ICH_PCM_246_MASK | ICH_PCM_20BIT);
 		if( aui->bits_set > 16 ) {
 			if((card->device_type == DEVICE_INTEL_ICH4) && ((snd_intel_read_32(card,ICH_GLOB_STAT_REG) & ICH_SAMPLE_CAP) == ICH_SAMPLE_16_20 )) {
@@ -372,16 +360,16 @@ static void snd_intel_prepare_playback( struct intel_card_s *card, struct audioo
 	period_size_samples = card->period_size_bytes / (aui->bits_card >> 3);
 	for( i = 0; i < ICH_DMABUF_PERIODS; i++ ) {
 		table_base[i*2] = pds_cardmem_physicalptr(card->dm, (char *)card->pcmout_buffer + ( i * card->period_size_bytes ));
-		/* SIS7012 handles the pcm data in bytes, others are in samples */
-		table_base[i*2+1] = (card->device_type==DEVICE_SIS) ? card->period_size_bytes : period_size_samples;
 #ifdef SBEMU
-		table_base[i*2+1] |= (ICH_INT_INTERVAL && ((i%ICH_INT_INTERVAL==ICH_INT_INTERVAL-1)) ? (ICH_BD_IOC<<16) : 0);
+		table_base[i*2+1] = ((card->device_type==DEVICE_SIS) ? card->period_size_bytes : period_size_samples) |  (ICH_INT_INTERVAL && ((i % ICH_INT_INTERVAL == ICH_INT_INTERVAL-1)) ? (ICH_BD_IOC<<16) : 0);
+#else
+		table_base[i*2+1] = period_size_samples;
 #endif
 	}
 	snd_intel_write_32(card,ICH_PO_BDBAR_REG, pds_cardmem_physicalptr(card->dm,table_base));
 
 	snd_intel_write_8(card,ICH_PO_LVI_REG,(ICH_DMABUF_PERIODS-1)); // set last index
-//	snd_intel_write_8(card,ICH_PO_CIV_REG,0); // reset current index
+	snd_intel_write_8(card,ICH_PO_CIV_REG,0); // reset current index
 
 	dbgprintf(("intel_prepare playback end\n"));
 }
@@ -571,8 +559,6 @@ static void ICH_start( struct audioout_info_s *aui )
 
 	snd_intel_codec_ready(card,ICH_GLOB_STAT_PCR);
 
-	snd_intel_write_8(card,ICH_PO_CR_REG, ICH_PO_CR_LVBIE | ICH_PO_CR_IOCE);
-
 	cmd = snd_intel_read_8(card,ICH_PO_CR_REG);
 	cmd |= ICH_PO_CR_START;
 	snd_intel_write_8(card,ICH_PO_CR_REG,cmd);
@@ -664,17 +650,15 @@ static void ICH_writedata( struct audioout_info_s *aui, char *src, unsigned long
 ///////////////////////////////////////////////////////////////////////////////////////
 {
 	struct intel_card_s *card = aui->card_private_data;
-	//unsigned int index;
+	unsigned int index;
 
 	MDma_writedata(aui,src,left);
 
-#if 0
 #ifdef SBEMU
 	snd_intel_write_8(card,ICH_PO_LVI_REG,(snd_intel_read_8(card, ICH_PO_CIV_REG)-1) % ICH_DMABUF_PERIODS);
 #else
 	index = aui->card_dmalastput / card->period_size_bytes;
 	snd_intel_write_8(card,ICH_PO_LVI_REG,(index-1) % ICH_DMABUF_PERIODS); // set stop position (to keep playing in an endless loop)
-#endif
 #endif
 	//dbgprintf(("ICH_writedata: index=%d\n",index));
 }
@@ -696,25 +680,23 @@ static long ICH_getbufpos( struct audioout_info_s *aui )
 			if(retry > 1)
 				continue;
 			MDma_clearbuf(aui);
-//			snd_intel_write_8( card, ICH_PO_LVI_REG, (ICH_DMABUF_PERIODS - 1) );
-//			snd_intel_write_8( card, ICH_PO_CIV_REG, 0);
+			snd_intel_write_8( card, ICH_PO_LVI_REG, (ICH_DMABUF_PERIODS - 1) );
+			snd_intel_write_8( card, ICH_PO_CIV_REG, 0);
 			aui->card_infobits |= AUINFOS_CARDINFOBIT_DMAUNDERRUN;
 			continue;
 		}
 #endif
 
 		pcmpos = snd_intel_read_16(card,ICH_PO_PICB_REG); // position in the current period (remaining unprocessed in SAMPLEs)
-		if (card->device_type != DEVICE_SIS) {
-			// Convert number of samples to number of bytes (but not for SIS7012)
-			pcmpos *= aui->bits_card>>3;
-		}
+		if (card->device_type != DEVICE_SIS)
+			pcmpos *= aui->bits_card >> 3;
 		//pcmpos*=aui->chan_card;
 		//printf("%d %d %d %d\n",aui->bits_card, aui->chan_card, pcmpos, card->period_size_bytes);
 		//dbgprintf(("ICH_getbufpos: pcmpos=%d\n",pcmpos));
 		if(!pcmpos || pcmpos > card->period_size_bytes){
 			if( snd_intel_read_8(card,ICH_PO_LVI_REG) == index ) {
 				MDma_clearbuf(aui);
-				//snd_intel_write_8(card,ICH_PO_LVI_REG,(index-1) % ICH_DMABUF_PERIODS); // to keep playing in an endless loop
+				snd_intel_write_8(card,ICH_PO_LVI_REG,(index-1) % ICH_DMABUF_PERIODS); // to keep playing in an endless loop
 				//snd_intel_write_8(card,ICH_PO_CIV_REG,index); // ??? -RO
 				aui->card_infobits |= AUINFOS_CARDINFOBIT_DMAUNDERRUN;
 			}
@@ -765,28 +747,9 @@ static int ICH_IRQRoutine( struct audioout_info_s* aui )
 {
 	struct intel_card_s *card = aui->card_private_data;
 	int status = snd_intel_read_8(card,ICH_PO_SR_REG);
-
-	if (status & ICH_PO_SR_LVBCI) {
-		// Last Valid Buffer Completion -- this seems to signify DMA underrun
-
-		// Reset the Last Valid Index, so we don't underrun again immediately
-		snd_intel_write_8(card, ICH_PO_LVI_REG, (ICH_DMABUF_PERIODS-1));
-
-		// This kicks off the playback of the buffers (again)
-		snd_intel_write_8(card,ICH_PO_CR_REG, snd_intel_read_8(card, ICH_PO_CR_REG) |
-			ICH_PO_CR_START | ICH_PO_CR_IOCE | ICH_PO_CR_LVBIE);
-	}
-
-	if (status & ICH_PO_SR_BCIS) {
-		// Buffer Completion Interrupt Status (aka IOC, when the high bit is set in the BDL size field)
-
-		// advance the Last Valid Buffer Index
-		snd_intel_write_8(card, ICH_PO_LVI_REG, (snd_intel_read_8(card,ICH_PO_LVI_REG) + 1) % ICH_DMABUF_PERIODS);
-	}
-
-	// acknowledge the interrupt we have seen
-	snd_intel_write_8(card, ICH_PO_SR_REG, status & (ICH_PO_SR_LVBCI | ICH_PO_SR_BCIS | ICH_PO_SR_FIFO));
-
+	status &= ICH_PO_SR_LVBCI | ICH_PO_SR_BCIS | ICH_PO_SR_FIFO;
+	if(status)
+		snd_intel_write_8(card, ICH_PO_SR_REG, status); //ack
 	return status != 0;
 }
 #endif
