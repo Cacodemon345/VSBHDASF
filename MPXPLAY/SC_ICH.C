@@ -83,10 +83,10 @@
 
 #define ICH_BD_IOC        0x8000 //buffer descriptor high word: interrupt on completion (IOC)
 
-#define ICH_DMABUF_MAX_PERIODS  32 // number of entries in the Buffer Descriptor List
-#define ICH_DMABUF_PERIODS   4 // number of "used" entries in the Buffer Descriptor List
-#define ICH_BDL_ENTRY_SIZE (2 * sizeof(uint32_t))  // size of one entry in the Buffer Descriptor List
-#define ICH_DMABUF_ALIGN (ICH_DMABUF_MAX_PERIODS*ICH_BDL_ENTRY_SIZE) // 256
+#define ICH_DMABUF_PERIODS  32
+#define ICH_MAX_CHANNELS     2
+#define ICH_MAX_BYTES        4
+#define ICH_DMABUF_ALIGN (ICH_DMABUF_PERIODS * ICH_MAX_CHANNELS * ICH_MAX_BYTES) // 256
 #if 1 //def SBEMU
 #define ICH_INT_INTERVAL     1 //interrupt interval in periods
 #endif
@@ -202,19 +202,14 @@ static unsigned int snd_intel_buffer_init( struct intel_card_s *card, struct aud
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 {
 	unsigned int bytes_per_sample = (aui->bits_set > 16) ? 4 : 2;
-	size_t buffer_descriptor_list_size = ICH_DMABUF_MAX_PERIODS*ICH_BDL_ENTRY_SIZE;
 
 	card->pcmout_bufsize = MDma_get_max_pcmoutbufsize( aui, 0, ICH_DMABUF_ALIGN, bytes_per_sample, 0 );
 
-	// Allocate Buffer Descriptor List + PCM output buffer in a single allocation
-	card->dm = MDma_alloc_cardmem(buffer_descriptor_list_size + card->pcmout_bufsize);
-
-	if (!card->dm) return 0;
-
-	// buffer descriptor list requires ICH_BDL_ENTRY_SIZE alignment,
-	// but dos-allocmem gives 16 byte align (so we don't need alignment correction)
-	card->virtualpagetable = (uint32_t *)card->dm->pMem;
-	card->pcmout_buffer = card->dm->pMem + buffer_descriptor_list_size;
+	card->dm = MDma_alloc_cardmem(ICH_DMABUF_PERIODS * 2 * sizeof(uint32_t) + card->pcmout_bufsize );
+	if (!card->dm)
+        return 0;
+	card->virtualpagetable = (uint32_t *)card->dm->pMem; // pagetable requires 8 byte align, but dos-allocmem gives 16 byte align (so we don't need alignment correction)
+	card->pcmout_buffer = ((char *)card->virtualpagetable) + ICH_DMABUF_PERIODS * 2 * sizeof(uint32_t);
 
 	// DMA buffer written by MDma_writedata() and MDma_clearbuf()
 	aui->card_DMABUFF = card->pcmout_buffer;
