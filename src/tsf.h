@@ -205,6 +205,7 @@ TSFDEF void tsf_render_float(tsf* f, float* buffer, int samples, int flag_mixing
 //   flag_mididrums: 0 for normal channels, otherwise apply MIDI drum channel rules
 //   bank: instrument bank number (alternative to preset_index)
 //   pan: stereo panning value from 0.0 (left) to 1.0 (right) (default 0.5 center)
+//   mod_wheel: mod wheel position 0 to 16383 (default 0 unmodulated)
 //   volume: linear volume scale factor (default 1.0 full)
 //   pitch_wheel: pitch wheel position 0 to 16383 (default 8192 unpitched)
 //   pitch_range: range of the pitch wheel in semitones (default 2.0, total +/- 2 semitones)
@@ -216,6 +217,7 @@ TSFDEF int tsf_channel_set_presetnumber(tsf* f, int channel, int preset_number, 
 TSFDEF int tsf_channel_set_bank(tsf* f, int channel, int bank);
 TSFDEF int tsf_channel_set_bank_preset(tsf* f, int channel, int bank, int preset_number);
 TSFDEF int tsf_channel_set_pan(tsf* f, int channel, float pan);
+TSFDEF int tsf_channel_set_mod_wheel(tsf* f, int channel, float mod_wheel);
 TSFDEF int tsf_channel_set_volume(tsf* f, int channel, float volume);
 TSFDEF int tsf_channel_set_pitchwheel(tsf* f, int channel, int pitch_wheel);
 TSFDEF int tsf_channel_set_pitchrange(tsf* f, int channel, float pitch_range);
@@ -240,11 +242,11 @@ TSFDEF int tsf_channel_get_preset_index(tsf* f, int channel);
 TSFDEF int tsf_channel_get_preset_bank(tsf* f, int channel);
 TSFDEF int tsf_channel_get_preset_number(tsf* f, int channel);
 TSFDEF float tsf_channel_get_pan(tsf* f, int channel);
+TSFDEF float tsf_channel_get_mod_wheel(tsf* f, int channel);
 TSFDEF float tsf_channel_get_volume(tsf* f, int channel);
 TSFDEF int tsf_channel_get_pitchwheel(tsf* f, int channel);
 TSFDEF float tsf_channel_get_pitchrange(tsf* f, int channel);
 TSFDEF float tsf_channel_get_tuning(tsf* f, int channel);
-
 #ifdef __cplusplus
 #  undef CPP_DEFAULT0
 }
@@ -457,7 +459,7 @@ struct tsf_voice
 	struct tsf_region* region;
 	double pitchInputTimecents, pitchOutputFactor;
 	double sourceSamplePosition;
-	float  noteGainDB, panFactorLeft, panFactorRight;
+	float  noteGainDB, panFactorLeft, panFactorRight, modWheel;
 	unsigned int playIndex, loopStart, loopEnd;
 	struct tsf_voice_envelope ampenv, modenv;
 	struct tsf_voice_lowpass lowpass;
@@ -466,8 +468,8 @@ struct tsf_voice
 
 struct tsf_channel
 {
-	unsigned short presetIndex, bank, pitchWheel, midiPan, midiVolume, midiExpression, midiRPN, midiData, sustain;
-	float panOffset, gainDB, pitchRange, tuning;
+	unsigned short presetIndex, bank, pitchWheel, midiPan, midiVolume, midiExpression, midiRPN, midiData, sustain, midiModWheel;
+	float panOffset, gainDB, pitchRange, tuning, modWheel;
 };
 
 struct tsf_channels
@@ -1248,7 +1250,7 @@ static void tsf_voice_render(tsf* f, struct tsf_voice* v, float* outputBuffer, i
 	// Cache some values, to give them at least some chance of ending up in registers.
 	TSF_BOOL updateModEnv = (region->modEnvToPitch || region->modEnvToFilterFc);
 	TSF_BOOL updateModLFO = (v->modlfo.delta && (region->modLfoToPitch || region->modLfoToFilterFc || region->modLfoToVolume));
-	TSF_BOOL updateVibLFO = (v->viblfo.delta && (region->vibLfoToPitch));
+	TSF_BOOL updateVibLFO = (v->viblfo.delta && (region->vibLfoToPitch + v->modWheel));
 	TSF_BOOL isLooping    = (v->loopStart < v->loopEnd);
 	unsigned int tmpLoopStart = v->loopStart, tmpLoopEnd = v->loopEnd;
 	double tmpSampleEndDbl = (double)region->end, tmpLoopEndDbl = (double)tmpLoopEnd + 1.0;
@@ -1258,7 +1260,7 @@ static void tsf_voice_render(tsf* f, struct tsf_voice* v, float* outputBuffer, i
 	TSF_BOOL dynamicLowpass = (region->modLfoToFilterFc || region->modEnvToFilterFc);
 	float tmpSampleRate = f->outSampleRate, tmpInitialFilterFc, tmpModLfoToFilterFc, tmpModEnvToFilterFc;
 
-	TSF_BOOL dynamicPitchRatio = (region->modLfoToPitch || region->modEnvToPitch || region->vibLfoToPitch);
+	TSF_BOOL dynamicPitchRatio = (region->modLfoToPitch || region->modEnvToPitch || (region->vibLfoToPitch + v->modWheel));
 	double pitchRatio;
 	float tmpModLfoToPitch, tmpVibLfoToPitch, tmpModEnvToPitch;
 
@@ -1268,7 +1270,7 @@ static void tsf_voice_render(tsf* f, struct tsf_voice* v, float* outputBuffer, i
 	if (dynamicLowpass) tmpInitialFilterFc = (float)region->initialFilterFc, tmpModLfoToFilterFc = (float)region->modLfoToFilterFc, tmpModEnvToFilterFc = (float)region->modEnvToFilterFc;
 	else tmpInitialFilterFc = 0, tmpModLfoToFilterFc = 0, tmpModEnvToFilterFc = 0;
 
-	if (dynamicPitchRatio) pitchRatio = 0, tmpModLfoToPitch = (float)region->modLfoToPitch, tmpVibLfoToPitch = (float)region->vibLfoToPitch, tmpModEnvToPitch = (float)region->modEnvToPitch;
+	if (dynamicPitchRatio) pitchRatio = 0, tmpModLfoToPitch = (float)region->modLfoToPitch, tmpVibLfoToPitch = ((float)region->vibLfoToPitch + v->modWheel), tmpModEnvToPitch = (float)region->modEnvToPitch;
 	else pitchRatio = tsf_timecents2Secsd(v->pitchInputTimecents) * v->pitchOutputFactor, tmpModLfoToPitch = 0, tmpVibLfoToPitch = 0, tmpModEnvToPitch = 0;
 
 	if (dynamicGain) tmpModLfoToVolume = (float)region->modLfoToVolume * 0.1f;
@@ -1785,6 +1787,7 @@ static void tsf_channel_setup_voice(tsf* f, struct tsf_voice* v)
 	float newpan = v->region->pan + c->panOffset;
 	v->playingChannel = f->channels->activeChannel;
 	v->noteGainDB += c->gainDB;
+	v->modWheel = c->modWheel;
 	tsf_voice_calcpitchratio(v, (c->pitchWheel == 8192 ? c->tuning : ((c->pitchWheel / 16383.0f * c->pitchRange * 2.0f) - c->pitchRange + c->tuning)), f->outSampleRate);
 	if      (newpan <= -0.5f) { v->panFactorLeft = 1.0f; v->panFactorRight = 0.0f; }
 	else if (newpan >=  0.5f) { v->panFactorLeft = 0.0f; v->panFactorRight = 1.0f; }
@@ -1900,6 +1903,20 @@ TSFDEF int tsf_channel_set_pan(tsf* f, int channel, float pan)
 			else { v->panFactorLeft = TSF_SQRTF(0.5f - newpan); v->panFactorRight = TSF_SQRTF(0.5f + newpan); }
 		}
 	c->panOffset = pan - 0.5f;
+	return 1;
+}
+
+TSFDEF int tsf_channel_set_mod_wheel(tsf* f, int channel, float mod_wheel)
+{
+	struct tsf_voice *v, *vEnd;
+	struct tsf_channel *c = tsf_channel_init(f, channel);
+	if (!c) return 0;
+	for (v = f->voices, vEnd = v + f->voiceNum; v != vEnd; v++)
+		if (v->playingPreset != -1 && v->playingChannel == channel)
+		{
+			v->modWheel = mod_wheel * 50.f;
+		}
+	c->modWheel = mod_wheel * 50.f;
 	return 1;
 }
 
@@ -2026,6 +2043,8 @@ TSFDEF int tsf_channel_midi_control(tsf* f, int channel, int controller, int con
 	if (!c) return 0;
 	switch (controller)
 	{
+		case   1 /*MOD_WHEEL_MSB*/   : c->midiModWheel   = (unsigned short)((c->midiModWheel   & 0x7F  ) | (control_value << 7)); goto TCMC_SET_MODWHEEL;
+		case  33 /*MOD_WHEEL_LSB*/   : c->midiModWheel   = (unsigned short)((c->midiModWheel   & 0x3F80) | (control_value));      goto TCMC_SET_MODWHEEL;
 		case   7 /*VOLUME_MSB*/      : c->midiVolume     = (unsigned short)((c->midiVolume     & 0x7F  ) | (control_value << 7)); goto TCMC_SET_VOLUME;
 		case  39 /*VOLUME_LSB*/      : c->midiVolume     = (unsigned short)((c->midiVolume     & 0x3F80) |  control_value);       goto TCMC_SET_VOLUME;
 		case  11 /*EXPRESSION_MSB*/  : c->midiExpression = (unsigned short)((c->midiExpression & 0x7F  ) | (control_value << 7)); goto TCMC_SET_VOLUME;
@@ -2049,17 +2068,22 @@ TSFDEF int tsf_channel_midi_control(tsf* f, int channel, int controller, int con
 			c->bank = 0;
 			c->midiRPN = 0xFFFF;
 			c->midiData = 0;
+			c->midiModWheel = 0;
 			tsf_channel_set_volume(f, channel, 1.0f);
 			tsf_channel_set_pan(f, channel, 0.5f);
 			tsf_channel_set_pitchrange(f, channel, 2.0f);
 			tsf_channel_set_tuning(f, channel, 0);
 			tsf_channel_set_sustain(f, channel, 0);
+			tsf_channel_set_mod_wheel(f, channel, 0);
 			return 1;
 	}
 	return 1;
 TCMC_SET_VOLUME:
 	//Raising to the power of 3 seems to result in a decent sounding volume curve for MIDI
 	tsf_channel_set_volume(f, channel, TSF_POWF((c->midiVolume / 16383.0f) * (c->midiExpression / 16383.0f), 3.0f));
+	return 1;
+TCMC_SET_MODWHEEL:
+	tsf_channel_set_mod_wheel(f, channel, c->midiModWheel / 16384.0f);
 	return 1;
 TCMC_SET_PAN:
 	tsf_channel_set_pan(f, channel, c->midiPan / 16383.0f);
@@ -2109,6 +2133,11 @@ TSFDEF float tsf_channel_get_pitchrange(tsf* f, int channel)
 TSFDEF float tsf_channel_get_tuning(tsf* f, int channel)
 {
 	return (f->channels && channel < f->channels->channelNum ? f->channels->channels[channel].tuning : 0.0f);
+}
+
+TSFDEF float tsf_channel_get_mod_wheel(tsf* f, int channel)
+{
+	return (f->channels && channel < f->channels->channelNum ? (f->channels->channels[channel].modWheel / 50.f) : 0.0f);
 }
 
 #ifdef __cplusplus
