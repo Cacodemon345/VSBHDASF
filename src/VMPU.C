@@ -60,7 +60,6 @@ void* tsfimpl_realloc(void *ptr, size_t size)
 #define TSF_FREE tsfimpl_free
 #define TSF_REALLOC tsfimpl_realloc
 #endif
-#include "STVORBIS.H"
 #define TSF_IMPLEMENTATION
 #include "TSF.H"
 
