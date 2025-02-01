@@ -126,7 +126,7 @@ $(OUTD)/vdma.o::     vdma.c      linear.h platform.h ptrap.h vdma.h config.h
 $(OUTD)/virq.o::     virq.c      linear.h platform.h pic.h ptrap.h virq.h config.h
 $(OUTD)/vopl3.o::    vopl3.cpp   dbopl.h vopl3.h config.h
 $(OUTD)/vsb.o::      vsb.c       linear.h platform.h vsb.h config.h
-$(OUTD)/vmpu.o::     vmpu.c      linear.h platform.h vmpu.h config.h tsf.h
+$(OUTD)/vmpu.o::     vmpu.c      linear.h platform.h vmpu.h config.h tsf.h stvorbis.h
 
 $(OUTD)/djdpmi.o::   djdpmi.asm
 $(OUTD)/dprintf.o::  dprintf.asm
