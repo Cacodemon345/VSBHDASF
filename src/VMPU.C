@@ -16,17 +16,23 @@ void* tsfimpl_malloc(size_t size)
 {
     __dpmi_meminfo info;
     info.address = 0;
-    info.size = (size + 4 + 4095) & ~4095;
+    info.size = (size + 8 + 4095) & ~4095;
 
-    size += 4;
     if (__dpmi_allocate_linear_memory( &info, 1 ) == -1 )
         return NULL;
 
     (*(size_t*)NearPtr(info.address)) = size;
-    return NearPtr((unsigned int)(((uint8_t*)info.address) + sizeof(size_t)));
+    (*(size_t*)NearPtr(info.address + 4)) = info.handle;
+    return NearPtr((unsigned int)(((uint8_t*)info.address) + sizeof(size_t) * 2));
 }
 
-void tsfimpl_free(void* ptr) {}
+void tsfimpl_free(void* ptr)
+{
+    if (ptr == NULL)
+        return;
+    size_t handle = *((size_t*)(ptr) - 1);
+    __dpmi_free_memory(handle);
+}
 
 void* tsfimpl_realloc(void *ptr, size_t size)
 {
@@ -35,7 +41,7 @@ void* tsfimpl_realloc(void *ptr, size_t size)
     if (ptr == 0)
 	return tsfimpl_malloc(size);
 
-    oldsize = *((size_t*)(ptr) - 1);
+    oldsize = *((size_t*)(ptr) - 2);
     newptr = tsfimpl_malloc(size);
 
     if (!newptr) return NULL;
@@ -44,6 +50,8 @@ void* tsfimpl_realloc(void *ptr, size_t size)
         memcpy(newptr, ptr, size);
     else
         memcpy(newptr, ptr, oldsize);
+
+    tsfimpl_free(ptr);
 
     return newptr;
 }
@@ -125,11 +133,8 @@ void VMPU_Process_Messages(void)
                                         if (*temp_buffer == 0xFF) {
                                                 int channel = 0;
                                                 for (channel = 0; channel < 16; channel++) {
+							tsf_reset(tsfrenderer);
                                                         tsf_set_volume(tsfrenderer, 1.0f);
-                                                        tsf_channel_midi_control(tsfrenderer, channel, 120, 0);
-                                                        tsf_channel_midi_control(tsfrenderer, channel, 121, 0);
-                                                        if (channel == 9)
-                                                                tsf_channel_set_bank_preset(tsfrenderer, 9, 128, 0);
                                                 }
                                         }
                                         if (*temp_buffer == 0xF0) {
@@ -164,13 +169,7 @@ void VMPU_Process_Messages(void)
                                                 }
                                                 // TODO: Differentiate between GS and GM Resets.
                                                 if (!memcmp(sysexbuf, gs_reset, sizeof(gs_reset)) || !memcmp(sysexbuf, gm_reset, sizeof(gm_reset))) {
-                                                        int channel = 0;
-                                                        for (channel = 0; channel < 16; channel++) {
-                                                                tsf_channel_midi_control(tsfrenderer, channel, 120, 0);
-                                                                tsf_channel_midi_control(tsfrenderer, channel, 121, 0);
-                                                                if (channel == 9)
-                                                                        tsf_channel_set_bank_preset(tsfrenderer, 9, 128, 0);
-                                                        }
+							tsf_reset(tsfrenderer);
                                                         tsf_set_volume(tsfrenderer, 1.0f);
                                                 }
 

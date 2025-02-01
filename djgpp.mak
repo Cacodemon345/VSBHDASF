@@ -7,7 +7,15 @@ ifndef DEBUG
 DEBUG=0
 endif
 
+ifndef PENTIUM4
+PENTIUM4=0
+endif
+
 NAME=vsbhda
+
+ifeq ($(PENTIUM4),1)
+NAME=vsbhdap4
+endif
 
 ifeq ($(DEBUG),1)
 OUTD=djgppd
@@ -15,6 +23,14 @@ C_DEBUG_FLAGS=-D_DEBUG
 else
 OUTD=djgpp
 C_DEBUG_FLAGS=
+endif
+
+ifeq ($(PENTIUM4),1)
+ifeq ($(DEBUG),1)
+OUTD=djgppp4d
+else
+OUTD=djgppp4
+endif
 endif
 
 vpath_src=src mpxplay
@@ -38,14 +54,18 @@ INCLUDE_DIRS=src mpxplay
 SRC_DIRS=src mpxplay
 
 C_OPT_FLAGS=-Os -fno-asynchronous-unwind-tables -fno-strict-aliasing
+ifeq ($(PENTIUM4),1)
+C_EXTRA_FLAGS=-frounding-math -march=pentium4 -msse -msse2 -mmmx -mfpmath=both -DPENTIUM4
+else
 C_EXTRA_FLAGS=-march=i386
+endif
 LD_FLAGS=$(addprefix -Xlinker ,$(LD_EXTRA_FLAGS))
 LD_EXTRA_FLAGS=-Map $(OUTD)/$(NAME).map
 
 INCLUDES=$(addprefix -I,$(INCLUDE_DIRS))
 LIBS=$(addprefix -l,stdcxx m)
 
-COMPILE.asm.o=jwasm.exe -q -djgpp -Istartup -D?MODEL=small -DDJGPP -DPENTIUM4=0 -Fo$@ $<
+COMPILE.asm.o=jwasm.exe -q -djgpp -Istartup -D?MODEL=small -DDJGPP -DPENTIUM4=$(PENTIUM4) -Fo$@ $<
 COMPILE.c.o=gcc $(C_DEBUG_FLAGS) $(C_OPT_FLAGS) $(C_EXTRA_FLAGS) $(CFLAGS) $(INCLUDES) -c $< -o $@
 COMPILE.cpp.o=gcc $(C_DEBUG_FLAGS) $(C_OPT_FLAGS) $(C_EXTRA_FLAGS) $(CPPFLAGS) -fno-exceptions $(INCLUDES) -c $< -o $@
 
@@ -98,15 +118,15 @@ $(OUTD)/timer.o::    timer.c     mpxplay.h au_cards.h timer.h
 
 $(OUTD)/dbopl.o::    dbopl.cpp   dbopl.h
 $(OUTD)/linear.o::   linear.c    linear.h platform.h
-$(OUTD)/main.o::     main.c      linear.h platform.h ptrap.h vopl3.h pic.h config.h vsb.h vdma.h virq.h au.h
+$(OUTD)/main.o::     main.c      linear.h platform.h ptrap.h vopl3.h pic.h config.h vsb.h vdma.h virq.h au.h tsf.h
 $(OUTD)/pic.o::      pic.c       pic.h platform.h ptrap.h
 $(OUTD)/ptrap.o::    ptrap.c     linear.h platform.h ptrap.h config.h
-$(OUTD)/sndisr.o::   sndisr.c    linear.h platform.h vopl3.h pic.h config.h vsb.h vdma.h virq.h ctadpcm.h au.h
+$(OUTD)/sndisr.o::   sndisr.c    linear.h platform.h vopl3.h pic.h config.h vsb.h vdma.h virq.h ctadpcm.h au.h tsf.h
 $(OUTD)/vdma.o::     vdma.c      linear.h platform.h ptrap.h vdma.h config.h
 $(OUTD)/virq.o::     virq.c      linear.h platform.h pic.h ptrap.h virq.h config.h
 $(OUTD)/vopl3.o::    vopl3.cpp   dbopl.h vopl3.h config.h
 $(OUTD)/vsb.o::      vsb.c       linear.h platform.h vsb.h config.h
-$(OUTD)/vmpu.o::     vmpu.c      linear.h platform.h vmpu.h config.h
+$(OUTD)/vmpu.o::     vmpu.c      linear.h platform.h vmpu.h config.h tsf.h
 
 $(OUTD)/djdpmi.o::   djdpmi.asm
 $(OUTD)/dprintf.o::  dprintf.asm
