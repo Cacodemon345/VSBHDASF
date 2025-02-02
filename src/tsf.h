@@ -1251,7 +1251,7 @@ static void tsf_voice_render(tsf* f, struct tsf_voice* v, float* outputBuffer, i
 	// Cache some values, to give them at least some chance of ending up in registers.
 	TSF_BOOL updateModEnv = (region->modEnvToPitch || region->modEnvToFilterFc);
 	TSF_BOOL updateModLFO = (v->modlfo.delta && (region->modLfoToPitch || region->modLfoToFilterFc || region->modLfoToVolume));
-	TSF_BOOL updateVibLFO = (v->viblfo.delta && (region->vibLfoToPitch));
+	TSF_BOOL updateVibLFO = (v->viblfo.delta && (region->vibLfoToPitch + v->modWheel));
 	TSF_BOOL isLooping    = (v->loopStart < v->loopEnd);
 	unsigned int tmpLoopStart = v->loopStart, tmpLoopEnd = v->loopEnd;
 	double tmpSampleEndDbl = (double)region->end, tmpLoopEndDbl = (double)tmpLoopEnd + 1.0;
