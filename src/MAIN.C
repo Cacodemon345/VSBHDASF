@@ -148,7 +148,7 @@ static const struct {
 #if SLOWDOWN
     "/SD",  "Set slowdown factor [def 0]", &gvars.slowdown,
 #endif
-    "/PS", "Set period size (HDA only) [256-2048, def 512]", &gvars.periodsize,
+    "/PS", "Set period size (HDA, AC97 only) [256-2048, def 512]", &gvars.periodsize,
     "/O",  "Set output (HDA only) [0=lineout|1=speaker|2=hp, def 0]", &gvars.pin,
     "/DEV", "Set start index for device scan (HDA only) [def 0]", &gvars.device,
     NULL, NULL, 0,
@@ -557,7 +557,7 @@ int main(int argc, char* argv[])
     }
 #endif
 
-    printf("Using HDA period size %d\n", gvars.periodsize);
+    printf("Using HDA/AC97 period size %d\n", gvars.periodsize);
 
     PIC_UnmaskIRQ( AU_getirq( gm.hAU ) );
 

@@ -86,7 +86,8 @@
 #define ICH_DMABUF_PERIODS  32
 #define ICH_MAX_CHANNELS     2
 #define ICH_MAX_BYTES        4
-#define ICH_DMABUF_ALIGN (ICH_DMABUF_PERIODS * ICH_MAX_CHANNELS * ICH_MAX_BYTES) // 256
+extern struct globalvars gvars;
+#define ICH_DMABUF_ALIGN gvars.periodsize
 #if 1 //def SBEMU
 #define ICH_INT_INTERVAL     1 //interrupt interval in periods
 #endif
