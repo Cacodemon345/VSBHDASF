@@ -97,8 +97,9 @@ void VMPU_Process_Messages(void)
         unsigned int index = 0;
         while (index < midi_available_ptr) {
                 switch (*temp_buffer & 0xF0) {
-                        case 0xA0:
                         case 0xD0:
+                                tsf_channel_set_pressure(tsfrenderer, temp_buffer[0] & 0xf, temp_buffer[1] / 127.f);
+                        case 0xA0:
                                 {
                                         index += midi_lengths[(temp_buffer[0] >> 4) - 0x8];
                                         temp_buffer += midi_lengths[(temp_buffer[0] >> 4) - 0x8];
@@ -131,9 +132,9 @@ void VMPU_Process_Messages(void)
                                 break;
                         case 0xF0: {
                                         if (*temp_buffer == 0xFF) {
-                                                int channel = 0;
-                                                for (channel = 0; channel < 16; channel++) {
+                                                {
 							tsf_reset(tsfrenderer);
+                                                        tsf_channel_set_bank_preset(tsfrenderer, 9, 128, 0);
                                                         tsf_set_volume(tsfrenderer, 1.0f);
                                                 }
                                         }
@@ -170,6 +171,7 @@ void VMPU_Process_Messages(void)
                                                 // TODO: Differentiate between GS and GM Resets.
                                                 if (!memcmp(sysexbuf, gs_reset, sizeof(gs_reset)) || !memcmp(sysexbuf, gm_reset, sizeof(gm_reset))) {
 							tsf_reset(tsfrenderer);
+                                                        tsf_channel_set_bank_preset(tsfrenderer, 9, 128, 0);
                                                         tsf_set_volume(tsfrenderer, 1.0f);
                                                 }
 
