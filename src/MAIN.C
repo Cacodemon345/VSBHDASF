@@ -24,6 +24,7 @@
 #include "VOPL3.H"
 #include "VSB.H"
 #include "SNDISR.H"
+#include "VERSION.H"
 
 #include "AU.H"
 
@@ -40,10 +41,11 @@
 #endif
 #define VOL_DEFAULT 7
 
-#define VERMAJOR "1"
-#define VERMINOR "4"
-
+#ifdef NOTFLAT
+bool _InstallInt31( int );
+#else
 bool _InstallInt31( void );
+#endif
 bool _UninstallInt31( void );
 
 #ifdef DJGPP
@@ -52,7 +54,7 @@ int _crt0_startup_flags = _CRT0_FLAG_PRESERVE_FILENAME_CASE | _CRT0_FLAG_KEEP_QU
 
 #else
 
-uint32_t    __djgpp_stack_top;
+uint32_t __djgpp_stack_top;
 uint32_t _linear_psp;
 uint32_t _linear_rmstack;
 uint32_t _get_linear_psp( void );
@@ -115,9 +117,12 @@ true, true, true, VOL_DEFAULT, 16, /* OPL3, rm, pm, vol, buffsize */
 #if SLOWDOWN
 0,
 #endif
+#ifdef NOTFLAT
+0, /* diverr */
+#endif
 0,
 0,
-512,
+512
 };
 
 static const struct {
@@ -151,6 +156,9 @@ static const struct {
     "/PS", "Set period size (HDA, AC97 only) [256-2048, def 512]", &gvars.periodsize,
     "/O",  "Set output (HDA only) [0=lineout|1=speaker|2=hp, def 0]", &gvars.pin,
     "/DEV", "Set start index for device scan (HDA only) [def 0]", &gvars.device,
+#ifdef NOTFLAT
+    "/DIVE", "Set Borland 'Runtime Error 200' fix [def 0]", &gvars.diverr,
+#endif
     NULL, NULL, 0,
 };
 
@@ -353,7 +361,7 @@ int main(int argc, char* argv[])
 
 
     if( gvars.base != 0x220 && gvars.base != 0x240 ) {
-        printf("Error: invalid IO base address: %x\n", gvars.base );
+        printf("Error: accepted IO base addresses: 220 or 240\n" );
         return 1;
     }
     if( gvars.irq != 2 && gvars.irq != 5 && gvars.irq != 7 ) {
@@ -366,7 +374,7 @@ int main(int argc, char* argv[])
     }
 #if SB16
     if( gvars.hdma != 0x0 && ( gvars.hdma <= 4 || gvars.hdma > 7)) {
-        printf("Error: acceoted as HDMA channel: 5, 6 or 7\n" );
+        printf("Error: accepted as HDMA channel: 5, 6 or 7\n" );
         return 1;
     }
 #endif
@@ -376,12 +384,12 @@ int main(int argc, char* argv[])
     }
 #if VMPU
     if( gvars.mpu && ( gvars.mpu != 0x330 && gvars.mpu != 0x300 )) {
-        printf("Error: invalid Midi port address: %x\n", gvars.mpu );
+        printf("Error: accepted as Midi port address: 330 or 300\n" );
         return 1;
     }
 #endif
     if( gvars.pin < 0 || gvars.pin > 2) {
-        printf("Error: Invalid output device %d\n", gvars.pin );
+        printf("Error: appected as output device: 0, 1 or 2\n" );
         return 1;
     }
     if( gvars.vol < 0 || gvars.vol > 9) {
@@ -393,7 +401,7 @@ int main(int argc, char* argv[])
         return 1;
     }
     if( gm.freq != 22050 && gm.freq != 44100 ) {
-        printf("Error: Invalid frequency %d\n", gm.freq );
+        printf("Error: valid frequencies are 22050 and 44100\n" );
         return 1;
     }
 #if defined(DJGPP)
@@ -445,6 +453,7 @@ int main(int argc, char* argv[])
 
     AU_setrate( gm.hAU, gm.freq, HW_CHANNELS, HW_BITS );
 
+    PTRAP_InitPortMax(); /* v1.6: init port trap ranges */
     if( gvars.rm ) {
         gvars.rm = PTRAP_Prepare_RM_PortTrap();
         if ( !gvars.rm ) {
@@ -533,7 +542,11 @@ int main(int argc, char* argv[])
 
     if ( gm.bISR ) {
         VIRQ_Init( gvars.irq );
+#ifdef NOTFLAT
+        _InstallInt31(gvars.diverr);
+#else
         _InstallInt31();
+#endif
     }
 
 #if VMPU

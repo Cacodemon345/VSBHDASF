@@ -63,6 +63,10 @@ void* tsfimpl_realloc(void *ptr, size_t size)
 #define TSF_IMPLEMENTATION
 #include "TSF.H"
 
+#if VMPU
+
+extern struct globalvars gvars;
+
 /* 0x330: data port
  * 0x331: read: status port
  *       write: command port
@@ -281,3 +285,4 @@ uint32_t VMPU_MPU(uint32_t port, uint32_t val, uint32_t out)
 {
     return out ? (VMPU_Write(port, val), val) : ( val &= ~0xff, val |= VMPU_Read(port) );
 }
+#endif

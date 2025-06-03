@@ -27,8 +27,8 @@ STACKCORR equ 2048
 
 	.code
 
-dfOldSndVec PFAR ?
-currSndvec  PFAR ?	; current vector for sound ISR
+dfOldSndVec PFAR ?	; original vector sound ISR
+currSndvec  PFAR ?	; current vector sound ISR
 dwDS    dd ?
 
 	.data
@@ -41,9 +41,9 @@ STACKCORR equ 4096
 
 	.data
 
-dfOldSndVec PFAR ?
+dfOldSndVec PFAR ?	; original vector sound ISR
 	align 4
-currSndvec  PFAR ?	; current vector for sound ISR
+currSndvec  PFAR ?	; current vector sound ISR
 	align 4
 dwDS    dd ?
 
@@ -115,6 +115,9 @@ endif
 	popad
 ;        frstor BYTE PTR [fpustack]
 	jz prevhdlr
+;--- v1.6: interrupts are enabled on entry to sound ISR if SETIF is 1
+;---       hence it should NOT be necessary to enable interrupts here;
+;	sti
 	insIRET
 prevhdlr:
 	jmp cs:[dfOldSndVec]
@@ -141,7 +144,7 @@ else
 	mov ebx, dword ptr cs:[currSndvec+0]
 	mov es,   word ptr cs:[currSndvec+SEGOFS]
 endif
-	clc
+	clc  ; return NC - call won't be routed to DPMI host
 	ret
 is_25:
 	push es
@@ -157,7 +160,7 @@ endif
 ifdef NOTFLAT
 	assume es:DGROUP
 endif
-	clc
+	clc  ; return NC - call won't be routed to DPMI host
 	ret
 _Snd_Notify21 endp
 
@@ -180,7 +183,7 @@ else
 	mov edx, dword ptr cs:[currSndvec+0]
 endif
 	mov cx, word ptr cs:[currSndvec+SEGOFS]
-	clc
+	clc  ; return NC - call won't be routed to DPMI host
 	ret
 
 is_05:
@@ -197,7 +200,7 @@ endif
 ifdef NOTFLAT
 	assume ds:DGROUP
 endif
-	clc
+	clc  ; return NC - call won't be routed to DPMI host
 	ret
 _Snd_Notify31 endp
 
