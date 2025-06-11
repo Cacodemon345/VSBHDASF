@@ -71,14 +71,15 @@ extern struct globalvars gvars;
  * 0x331: read: status port
  *       write: command port
  * status port:
- * bit 7: 0=data ready to read
- * bit 6: 0=data ready to write (both command and data)
+ * bit 6: 0=ready to write cmd or MIDI data; 1=interface busy
+ * bit 7: 0=data ready to read; 1=no data at data port
  * command port:
- *  ff: reset, then ACK (FE) from data port
- *  3f: set to UART mode
+ *  0xff: reset - triggers ACK (FE) to be read from data port
+ *  0x3f: set to UART mode - triggers ACK (FE) to be read from data port
  */
 
 static bool bReset = false;
+static uint8_t bUART = 0;
 
 static const int midi_lengths[8] = { 3, 3, 3, 3, 2, 2, 3, 1 };
 static unsigned char midi_buffer[4096];
