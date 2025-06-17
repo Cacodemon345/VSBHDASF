@@ -15,4 +15,4 @@ Run `make -f djgpp.mak` for normal i386 version, and `make -f djgpp-p4.mak` to c
 # Usage
 Same as upstream VSBHDA. However, soundfonts require setting the `SOUNDFONT` environment variable to the path to soundfont (e.g. `set SOUNDFONT=\path\to\soundfont`) before launching. Alternatively, you may put a soundfont file named `sfont.sf2` in the directory where the executable resides and launch it in the exact same directory.
 
-The MPU-401 options from the BLASTER environment variable is respected, but can be overriden with the `/P` switch, immediately followed by the I/O address of the emulated MPU-401 without any spaces (e.g. `/P330`).
+The MPU-401 options from the BLASTER environment variable is respected, but can be overriden with the `/P` switch, immediately followed by the I/O address of the emulated MPU-401 without any spaces (e.g. `/P330`). Note that either the `/P` argument or the MPU-401 option in the environment variable must be set, as otherwise it will not enable MPU-401 emulation.
