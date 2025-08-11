@@ -1,3 +1,5 @@
+(Project is mostly halted since VSBHDA v1.7 added soundfont support.)
+
 # VSBHDASF
 Sound blaster emulation for HDA (and AC97/SBLive); a fork of Japheth's VSBHDA.
 
